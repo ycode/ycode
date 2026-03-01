@@ -1,0 +1,12 @@
+# Runtime data (never commit)
+.env
+volumes/db/data/
+volumes/storage/*
+volumes/db/init/*
+backups/*
+
+# Keep directory structure
+!volumes/storage/.gitkeep
+!volumes/db/init/.gitkeep
+!backups/.gitkeep
+!volumes/functions/.gitkeep
