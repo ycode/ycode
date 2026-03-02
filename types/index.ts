@@ -41,6 +41,7 @@ export interface TypographyDesign {
   underlineOffset?: string;
   verticalAlign?: string;
   color?: string;
+  placeholderColor?: string;
 }
 
 export interface SpacingDesign {
@@ -358,6 +359,7 @@ export interface LayerVariables {
     borderColor?: DesignColorVariable;
     divideColor?: DesignColorVariable;
     textDecorationColor?: DesignColorVariable;
+    placeholderColor?: DesignColorVariable;
   };
 }
 

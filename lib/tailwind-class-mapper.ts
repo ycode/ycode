@@ -232,6 +232,7 @@ const CLASS_PROPERTY_MAP: Record<string, RegExp> = {
   // Excludes fontSize named values and text-align values
   // Includes opacity modifier: text-[#cc8d8d]/59
   color: /^text-(?!(?:xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl|left|center|right|justify|start|end)(?:\s|$)).+(\/\d+)?$/,
+  placeholderColor: /^placeholder:text-.+(\/\d+)?$/,
 
   // Backgrounds
   backgroundColor: /^bg-(?!(?:auto|cover|contain|bottom|center|left|left-bottom|left-top|right|right-bottom|right-top|top|repeat|no-repeat|repeat-x|repeat-y|repeat-round|repeat-space|none|gradient-to-t|gradient-to-tr|gradient-to-r|gradient-to-br|gradient-to-b|gradient-to-bl|gradient-to-l|gradient-to-tl)$)((\w+)(-\d+)?|\[.+\](?:\/\d+)?)$/,
@@ -561,6 +562,15 @@ export function propertyToClass(
           return `text-[${value}]`;
         }
         return `text-${value}`;
+      case 'placeholderColor':
+        if (value.match(/^#|^rgb/)) {
+          const parts = value.split('/');
+          if (parts.length === 2) {
+            return `placeholder:text-[${parts[0]}]/${parts[1]}`;
+          }
+          return `placeholder:text-[${value}]`;
+        }
+        return `placeholder:text-${value}`;
     }
   }
 
@@ -1166,6 +1176,12 @@ export function classesToDesign(classes: string | string[]): Layer['design'] {
     if (cls.startsWith('tracking-[')) {
       const value = extractArbitraryValue(cls);
       if (value) design.typography!.letterSpacing = value;
+    }
+
+    // Placeholder Color
+    if (cls.startsWith('placeholder:text-[')) {
+      const value = extractArbitraryValueWithOpacity(cls);
+      if (value) design.typography!.placeholderColor = value;
     }
 
     // ===== SPACING =====

@@ -58,6 +58,7 @@ export default function TypographyControls({ layer, onLayerUpdate, activeTextSty
   const textDecorationColor = getDesignProperty('typography', 'textDecorationColor') || '';
   const textDecorationThickness = getDesignProperty('typography', 'textDecorationThickness') || '';
   const underlineOffset = getDesignProperty('typography', 'underlineOffset') || '';
+  const placeholderColor = getDesignProperty('typography', 'placeholderColor') || '';
 
   // Get available weights for the selected font
   const selectedFont = getFontByFamily(fontFamily);
@@ -231,6 +232,19 @@ export default function TypographyControls({ layer, onLayerUpdate, activeTextSty
   // Check if the layer is an icon
   const isIcon = layer?.name === 'icon';
 
+  // Check if the layer supports placeholder (input/textarea)
+  const hasPlaceholder = layer?.name === 'input' || layer?.name === 'textarea';
+
+  const handlePlaceholderColorChange = (value: string) => {
+    const sanitized = removeSpaces(value);
+    debouncedUpdateDesignProperty('typography', 'placeholderColor', sanitized || null);
+  };
+
+  const handlePlaceholderColorImmediate = (value: string) => {
+    const sanitized = removeSpaces(value);
+    updateDesignProperty('typography', 'placeholderColor', sanitized || null);
+  };
+
   // Inline text styles that don't support block-level properties like text-align
   // Dynamic styles (dts-*) are also inline
   const inlineTextStyles = ['bold', 'italic', 'underline', 'strike', 'subscript', 'superscript', 'code'];
@@ -347,6 +361,27 @@ export default function TypographyControls({ layer, onLayerUpdate, activeTextSty
             />
           </div>
         </div>
+
+        {hasPlaceholder && (
+          <div className="grid grid-cols-3">
+            <Label variant="muted">Placeholder</Label>
+            <div className="col-span-2 *:w-full">
+              <ColorPropertyField
+                solidOnly
+                value={placeholderColor}
+                onChange={handlePlaceholderColorChange}
+                onImmediateChange={handlePlaceholderColorImmediate}
+                defaultValue="#9ca3af"
+                layer={layer}
+                onLayerUpdate={onLayerUpdate}
+                designProperty="placeholderColor"
+                fieldGroups={fieldGroups}
+                allFields={allFields}
+                collections={collections}
+              />
+            </div>
+          </div>
+        )}
 
         {!isIcon && !hideBlockLevelProperties && (
           <div className="grid grid-cols-3">
