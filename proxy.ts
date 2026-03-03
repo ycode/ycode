@@ -27,8 +27,8 @@ function getSupabaseEnvConfig(): { url: string; anonKey: string } | null {
 
   if (!anonKey || !connectionUrl) return null;
 
-  // For self-hosted Supabase, use NEXT_PUBLIC_SUPABASE_URL if available
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  // For self-hosted Supabase: prefer internal URL for server-side, fall back to public URL
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (supabaseUrl) {
     return { url: supabaseUrl, anonKey };
   }

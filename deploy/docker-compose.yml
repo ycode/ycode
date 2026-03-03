@@ -478,6 +478,8 @@ services:
 
       # Supabase API URL (public, for browser access)
       NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_PUBLIC_URL}
+      # Supabase API URL (internal, for server-side calls within Docker network)
+      SUPABASE_URL: http://kong:8000
 
       # Self-hosted image domain for Next.js image optimization
       SELF_HOSTED_SUPABASE_HOSTNAME: ${SELF_HOSTED_SUPABASE_HOSTNAME:-}
