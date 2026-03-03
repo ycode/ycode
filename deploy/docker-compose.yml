@@ -1,0 +1,530 @@
+###############################################################################
+# Ycode Self-Hosted Docker Stack
+# Supabase (13 services) + Ycode App + Cloudflare Tunnel
+###############################################################################
+
+networks:
+  ycode-net:
+    driver: bridge
+
+volumes:
+  db-config:
+
+services:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # SUPABASE INFRASTRUCTURE
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  # ── Vector: Log collector ──────────────────────────────────────────────────
+  vector:
+    image: timberio/vector:0.28.1-alpine
+    container_name: supabase-vector
+    restart: unless-stopped
+    networks: [ycode-net]
+    command: --config /etc/vector/vector.yml
+    volumes:
+      - ./volumes/logs/vector.yml:/etc/vector/vector.yml:ro
+      - ${DOCKER_SOCKET_LOCATION:-/var/run/docker.sock}:/var/run/docker.sock:ro
+    environment:
+      LOGFLARE_API_KEY: ${LOGFLARE_PRIVATE_ACCESS_TOKEN}
+    healthcheck:
+      disable: true
+
+  # ── PostgreSQL Database ────────────────────────────────────────────────────
+  db:
+    image: supabase/postgres:15.14.1.088
+    container_name: supabase-db
+    restart: unless-stopped
+    networks: [ycode-net]
+    volumes:
+      - ./volumes/db/data:/var/lib/postgresql/data:Z
+      - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
+      - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
+      - ./volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:Z
+      - ./volumes/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:Z
+      - ./volumes/db/_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql:Z
+      - ./volumes/db/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:Z
+      - ./volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
+      - db-config:/etc/postgresql-custom
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXP: ${JWT_EXPIRY:-3600}
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - log_min_messages=fatal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U supabase_admin -h localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      vector:
+        condition: service_started
+
+  # ── Analytics (Logflare) ───────────────────────────────────────────────────
+  analytics:
+    image: supabase/logflare:1.33.1
+    container_name: supabase-analytics
+    restart: unless-stopped
+    networks: [ycode-net]
+    environment:
+      LOGFLARE_NODE_HOST: 127.0.0.1
+      DB_USERNAME: supabase_admin
+      DB_DATABASE: _supabase
+      DB_HOSTNAME: ${POSTGRES_HOST:-db}
+      DB_PORT: ${POSTGRES_PORT:-5432}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_SCHEMA: _analytics
+      POSTGRES_BACKEND_URL: postgresql://supabase_admin:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-db}:${POSTGRES_PORT:-5432}/_supabase
+      POSTGRES_BACKEND_SCHEMA: _analytics
+      LOGFLARE_API_KEY: ${LOGFLARE_PRIVATE_ACCESS_TOKEN}
+      LOGFLARE_SINGLE_TENANT: true
+      LOGFLARE_SUPABASE_MODE: true
+      LOGFLARE_MIN_CLUSTER_SIZE: 1
+      RELEASE_COOKIE: ${LOGFLARE_PRIVATE_ACCESS_TOKEN}
+      LOGFLARE_LOG_LEVEL: warn
+      LOGFLARE_FEATURE_FLAG_OVERRIDE: multibackend=true
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Auth (GoTrue) ─────────────────────────────────────────────────────────
+  auth:
+    image: supabase/gotrue:v2.187.0
+    container_name: supabase-auth
+    restart: unless-stopped
+    networks: [ycode-net]
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-postgres}
+      GOTRUE_SITE_URL: ${SITE_URL}
+      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS}
+      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP:-false}
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: ${JWT_EXPIRY:-3600}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: ${ENABLE_EMAIL_SIGNUP:-true}
+      GOTRUE_MAILER_AUTOCONFIRM: ${ENABLE_EMAIL_AUTOCONFIRM:-true}
+      GOTRUE_SMTP_HOST: ${SMTP_HOST:-supabase-mail}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-2500}
+      GOTRUE_SMTP_USER: ${SMTP_USER}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS}
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL}
+      GOTRUE_SMTP_MAX_FREQUENCY: 1s
+      GOTRUE_MAILER_URLPATHS_INVITE: ${MAILER_URLPATHS_INVITE:-/auth/v1/verify}
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: ${MAILER_URLPATHS_CONFIRMATION:-/auth/v1/verify}
+      GOTRUE_MAILER_URLPATHS_RECOVERY: ${MAILER_URLPATHS_RECOVERY:-/auth/v1/verify}
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: ${MAILER_URLPATHS_EMAIL_CHANGE:-/auth/v1/verify}
+      GOTRUE_EXTERNAL_PHONE_ENABLED: ${ENABLE_PHONE_SIGNUP:-false}
+      GOTRUE_SMS_AUTOCONFIRM: ${ENABLE_PHONE_AUTOCONFIRM:-true}
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: ${ENABLE_ANONYMOUS_USERS:-false}
+      GOTRUE_LOG_LEVEL: warn
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9999/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      db:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+
+  # ── REST API (PostgREST) ──────────────────────────────────────────────────
+  rest:
+    image: postgrest/postgrest:v14.5
+    container_name: supabase-rest
+    restart: unless-stopped
+    networks: [ycode-net]
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-postgres}
+      PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS:-public,storage,graphql_public}
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_EXP: ${JWT_EXPIRY:-3600}
+      PGRST_LOG_LEVEL: warn
+    depends_on:
+      db:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+
+  # ── Realtime ──────────────────────────────────────────────────────────────
+  realtime:
+    image: supabase/realtime:v2.78.0
+    container_name: supabase-realtime
+    restart: unless-stopped
+    networks:
+      ycode-net:
+        aliases:
+          - realtime-dev.supabase-realtime
+    environment:
+      PORT: 4000
+      DB_HOST: ${POSTGRES_HOST:-db}
+      DB_PORT: ${POSTGRES_PORT:-5432}
+      DB_USER: supabase_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB:-postgres}
+      DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
+      DB_ENC_KEY: supabaserealtime
+      DB_SSL: "false"
+      API_JWT_SECRET: ${JWT_SECRET}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      ERL_AFLAGS: -proto_dist inet_tcp
+      DNS_NODES: "''"
+      RLIMIT_NOFILE: "10000"
+      APP_NAME: realtime
+      SEED_SELF_HOST: "true"
+      REPLICATION_MODE: RLS
+      REPLICATION_POLL_INTERVAL: 100
+      SUBSCRIPTION_SYNC_INTERVAL: 60000
+      FLY_ALLOC_ID: fly123
+      FLY_APP_NAME: realtime
+      NUM_SLOTS: 2
+      MAX_REPLICATION_LAG_MB: 500
+      SLOT_NAME_SUFFIX:
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sSfL --head -o /dev/null http://127.0.0.1:4000/api/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      db:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+
+  # ── Storage API ───────────────────────────────────────────────────────────
+  storage:
+    image: supabase/storage-api:v1.39.1
+    container_name: supabase-storage
+    restart: unless-stopped
+    networks: [ycode-net]
+    volumes:
+      - ./volumes/storage:/var/lib/storage:z
+    environment:
+      ANON_KEY: ${ANON_KEY}
+      SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      POSTGREST_URL: http://rest:3000
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-postgres}
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: stub
+      REGION: stub
+      GLOBAL_S3_BUCKET: stub
+      ENABLE_IMAGE_TRANSFORMATION: "true"
+      IMGPROXY_URL: http://imgproxy:5001
+      S3_PROTOCOL_ACCESS_KEY_ID: ${S3_PROTOCOL_ACCESS_KEY_ID:-625729a08b95bf1b7ff351a663f3a23c}
+      S3_PROTOCOL_ACCESS_KEY_SECRET: ${S3_PROTOCOL_ACCESS_KEY_SECRET:-850181e4652dd023b7a98c58ae0d2d34bd487ee0cc3254aed6eda37307425907}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:5000/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      db:
+        condition: service_healthy
+      rest:
+        condition: service_started
+      imgproxy:
+        condition: service_started
+
+  # ── Image Proxy ───────────────────────────────────────────────────────────
+  imgproxy:
+    image: darthsim/imgproxy:v3.8.0
+    container_name: supabase-imgproxy
+    restart: unless-stopped
+    networks: [ycode-net]
+    volumes:
+      - ./volumes/storage:/var/lib/storage:z
+    environment:
+      IMGPROXY_BIND: ":5001"
+      IMGPROXY_LOCAL_FILESYSTEM_ROOT: /var/lib/storage
+      IMGPROXY_USE_ETAG: "true"
+      IMGPROXY_ENABLE_WEBP_DETECTION: ${IMGPROXY_ENABLE_WEBP_DETECTION:-true}
+    healthcheck:
+      test: ["CMD", "imgproxy", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ── Postgres Meta ─────────────────────────────────────────────────────────
+  meta:
+    image: supabase/postgres-meta:v0.95.2
+    container_name: supabase-meta
+    restart: unless-stopped
+    networks: [ycode-net]
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: ${POSTGRES_HOST:-db}
+      PG_META_DB_PORT: ${POSTGRES_PORT:-5432}
+      PG_META_DB_NAME: ${POSTGRES_DB:-postgres}
+      PG_META_DB_USER: supabase_admin
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      PG_META_CRYPTO_KEY: ${PG_META_CRYPTO_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+
+  # ── Edge Functions ────────────────────────────────────────────────────────
+  functions:
+    image: supabase/edge-runtime:v1.70.5
+    container_name: supabase-functions
+    restart: unless-stopped
+    networks: [ycode-net]
+    command:
+      - start
+      - --main-service
+      - /home/deno/functions/main
+    volumes:
+      - ./volumes/functions:/home/deno/functions:Z
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_DB_URL: postgresql://postgres:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-postgres}
+      VERIFY_JWT: "${FUNCTIONS_VERIFY_JWT:-false}"
+    depends_on:
+      analytics:
+        condition: service_healthy
+
+  # ── Supavisor (Connection Pooler) ─────────────────────────────────────────
+  supavisor:
+    image: supabase/supavisor:2.7.4
+    container_name: supabase-supavisor
+    restart: unless-stopped
+    networks: [ycode-net]
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    volumes:
+      - ./volumes/pooler/pooler.exs:/etc/pooler/pooler.exs:ro,z
+    command:
+      - /bin/sh
+      - -c
+      - |
+        /app/bin/migrate && /app/bin/supavisor eval 'File.read!("/etc/pooler/pooler.exs") |> Code.eval_string()' && /app/bin/server
+    environment:
+      PORT: 4000
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_URL: ecto://supabase_admin:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-db}:${POSTGRES_PORT:-5432}/_supabase
+      CLUSTER_POSTGRES: "true"
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      VAULT_ENC_KEY: ${VAULT_ENC_KEY}
+      API_JWT_SECRET: ${JWT_SECRET}
+      METRICS_JWT_SECRET: ${JWT_SECRET}
+      REGION: local
+      ERL_AFLAGS: -proto_dist inet_tcp
+      POOLER_TENANT_ID: ${POOLER_TENANT_ID}
+      POOLER_DEFAULT_POOL_SIZE: ${POOLER_DEFAULT_POOL_SIZE:-15}
+      POOLER_MAX_CLIENT_CONN: ${POOLER_MAX_CLIENT_CONN:-200}
+      POOLER_POOL_MODE: transaction
+    healthcheck:
+      test: ["CMD", "curl", "-sSfL", "--head", "-o", "/dev/null", "http://127.0.0.1:4000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      db:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+
+  # ── Kong API Gateway ──────────────────────────────────────────────────────
+  kong:
+    image: kong:2.8.1
+    container_name: supabase-kong
+    restart: unless-stopped
+    networks: [ycode-net]
+    ports:
+      # LAN access to Supabase Studio + API
+      - "${KONG_HTTP_PORT:-3080}:8000/tcp"
+    entrypoint: bash -c 'eval "echo \"$$(cat ~/temp.yml)\"" > ~/kong.yml && /docker-entrypoint.sh kong docker-start'
+    volumes:
+      - ./volumes/api/kong.yml:/home/kong/temp.yml:ro
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth,request-termination
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      DASHBOARD_USERNAME: ${DASHBOARD_USERNAME:-supabase}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
+    depends_on:
+      analytics:
+        condition: service_healthy
+
+  # ── Studio Dashboard ──────────────────────────────────────────────────────
+  studio:
+    image: supabase/studio:2026.02.16-sha-26c615c
+    container_name: supabase-studio
+    restart: unless-stopped
+    networks: [ycode-net]
+    environment:
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DEFAULT_ORGANIZATION_NAME: ${STUDIO_DEFAULT_ORGANIZATION:-Ycode}
+      DEFAULT_PROJECT_NAME: ${STUDIO_DEFAULT_PROJECT:-ycode}
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL}
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      AUTH_JWT_SECRET: ${JWT_SECRET}
+      LOGFLARE_API_KEY: ${LOGFLARE_PRIVATE_ACCESS_TOKEN}
+      LOGFLARE_URL: http://analytics:4000
+      NEXT_PUBLIC_ENABLE_LOGS: "true"
+      NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/api/platform/profile', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) })"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      analytics:
+        condition: service_healthy
+      meta:
+        condition: service_started
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # YCODE APPLICATION
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  # ── Ycode Migrations (runs once, then exits) ─────────────────────────────
+  ycode-migrate:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: builder
+    container_name: ycode-migrate
+    networks: [ycode-net]
+    working_dir: /app
+    command: >
+      sh -c "NODE_NO_WARNINGS=1 node -r tsconfig-paths/register -r ts-node/register node_modules/.bin/knex migrate:latest --knexfile knexfile.ts"
+    environment:
+      NODE_ENV: production
+      SUPABASE_PUBLISHABLE_KEY: ${ANON_KEY}
+      SUPABASE_SECRET_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_CONNECTION_URL: "postgresql://postgres.${POOLER_TENANT_ID}:[YOUR-PASSWORD]@supavisor:6543/postgres"
+      SUPABASE_DB_PASSWORD: ${POSTGRES_PASSWORD}
+    depends_on:
+      supavisor:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  # ── Ycode App ─────────────────────────────────────────────────────────────
+  ycode:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: runner
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_PUBLIC_URL}
+        NEXT_PUBLIC_TEMPLATE_API_URL: ${NEXT_PUBLIC_TEMPLATE_API_URL:-}
+    container_name: ycode-app
+    restart: unless-stopped
+    networks: [ycode-net]
+    ports:
+      - "3002:3002"
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      HOSTNAME: 0.0.0.0
+
+      # Supabase credentials (local self-hosted)
+      SUPABASE_PUBLISHABLE_KEY: ${ANON_KEY}
+      SUPABASE_SECRET_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_CONNECTION_URL: "postgresql://postgres.${POOLER_TENANT_ID}:[YOUR-PASSWORD]@supavisor:6543/postgres"
+      SUPABASE_DB_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # Supabase API URL (public, for browser access)
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_PUBLIC_URL}
+      # Supabase API URL (internal, for server-side calls within Docker network)
+      SUPABASE_URL: http://kong:8000
+
+      # Self-hosted image domain for Next.js image optimization
+      SELF_HOSTED_SUPABASE_HOSTNAME: ${SELF_HOSTED_SUPABASE_HOSTNAME:-}
+
+      # Template API
+      NEXT_PUBLIC_TEMPLATE_API_URL: ${NEXT_PUBLIC_TEMPLATE_API_URL:-}
+      TEMPLATE_API_URL: ${TEMPLATE_API_URL:-}
+      TEMPLATE_UPLOAD_API_KEY: ${TEMPLATE_UPLOAD_API_KEY:-}
+
+      # Security
+      PAGE_AUTH_SECRET: ${PAGE_AUTH_SECRET}
+
+      # Optional
+      GOOGLE_FONTS_API_KEY: ${GOOGLE_FONTS_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3002/"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      ycode-migrate:
+        condition: service_completed_successfully
+      kong:
+        condition: service_started
+      auth:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+      supavisor:
+        condition: service_healthy
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # CLOUDFLARE TUNNEL (disabled — using existing Unraid tunnel)
+  # Uncomment if you want a dedicated tunnel for this stack
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: cloudflared
+  #   restart: unless-stopped
+  #   networks: [ycode-net]
+  #   command: tunnel --no-autoupdate run
+  #   environment:
+  #     TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+  #   depends_on:
+  #     ycode:
+  #       condition: service_healthy

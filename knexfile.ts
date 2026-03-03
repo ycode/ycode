@@ -24,13 +24,15 @@ async function getSupabaseConnectionParams() {
 
   const connectionParams = parseSupabaseConfig(config);
 
+  const isLocalHost = ['localhost', '127.0.0.1', 'db', 'supavisor'].includes(connectionParams.dbHost);
+
   return {
     host: connectionParams.dbHost,
     port: connectionParams.dbPort,
     database: connectionParams.dbName,
     user: connectionParams.dbUser,
     password: connectionParams.dbPassword,
-    ssl: { rejectUnauthorized: false },
+    ssl: isLocalHost ? false : { rejectUnauthorized: false },
   };
 }
 

@@ -141,6 +141,17 @@ export default function WelcomePage() {
 
         setIsVercel(data.is_vercel || false);
         setEnvVarsConfigured(data.is_configured || false);
+
+        // Auto-skip to admin step when credentials are already configured via env vars
+        // but setup isn't complete yet (no admin user created)
+        if (data.is_configured && !data.is_setup_complete && currentStep === 'welcome') {
+          setStep('admin');
+          // Skip email confirm check for self-hosted setups (ENABLE_EMAIL_AUTOCONFIRM is set in Docker)
+          if (!data.is_vercel) {
+            setEmailConfirmDisabled(true);
+          }
+        }
+
         setStatusChecked(true);
       } catch (err) {
         console.error('Failed to check environment:', err);

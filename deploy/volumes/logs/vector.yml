@@ -1,0 +1,42 @@
+api:
+  enabled: true
+  address: 0.0.0.0:9001
+
+sources:
+  docker_host:
+    type: docker_logs
+    exclude_containers:
+      - supabase-vector
+
+transforms:
+  project_logs:
+    type: remap
+    inputs:
+      - docker_host
+    source: |-
+      .project = "default"
+      .event_message = del(.message)
+      .appname = del(.container_name)
+      del(.container_created_at)
+      del(.container_id)
+      del(.source_type)
+      del(.stream)
+      del(.label)
+      del(.image)
+      del(.host)
+      del(.timestamp)
+
+sinks:
+  logflare:
+    type: "http"
+    inputs:
+      - project_logs
+    uri: "http://analytics:4000/api/logs?source_name=docker_host&api_key=${LOGFLARE_API_KEY}"
+    method: "post"
+    encoding:
+      codec: "json"
+    batch:
+      max_bytes: 1049000
+      timeout_secs: 1
+    request:
+      retry_max_duration_secs: 10
