@@ -62,11 +62,11 @@ export function parseConnectionUrl(connectionUrl: string): {
     const dbPassword = decodeURIComponent(url.password);
     const projectId = extractProjectId(connectionUrl);
 
-    // SUPABASE_URL: server-side internal URL (e.g. http://kong:8000 inside Docker)
     // NEXT_PUBLIC_SUPABASE_URL: browser-accessible URL (e.g. http://localhost:3080)
+    // SUPABASE_URL: server-side internal URL (e.g. http://kong:8000 inside Docker)
     // Fallback: construct from project ID for Supabase Cloud
-    const projectUrl = process.env.SUPABASE_URL
-      || process.env.NEXT_PUBLIC_SUPABASE_URL
+    const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      || process.env.SUPABASE_URL
       || `https://${projectId}.supabase.co`;
 
     return {
