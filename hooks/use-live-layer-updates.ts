@@ -5,9 +5,9 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { useCollaborationPresenceStore } from '../stores/useCollaborationPresenceStore';
+import { useCollaborationPresenceStore, getResourceLockKey } from '../stores/useCollaborationPresenceStore';
 import { useAuthStore } from '../stores/useAuthStore';
-import { usePagesStore } from '../stores/usePagesStore';
+import { usePagesStore, markPageMcpSynced } from '../stores/usePagesStore';
 import { useEditorStore } from '../stores/useEditorStore';
 import { createClient } from '@/lib/supabase-browser';
 import { debounce } from '../lib/collaboration-utils';
@@ -106,6 +106,11 @@ export function useLiveLayerUpdates(
 
         channel.on('broadcast', { event: 'layer_moved' }, (payload) => {
           handleIncomingLayerMove(payload.payload);
+        });
+
+        // Listen for full layer sync (from MCP / server-side changes)
+        channel.on('broadcast', { event: 'layers_full_sync' }, (payload) => {
+          handleIncomingFullSync(payload.payload);
         });
 
         // Listen for user activity
@@ -226,6 +231,35 @@ export function useLiveLayerUpdates(
       freshMoveLayer(pageId, payload.layer_id, payload.target_parent_id, payload.target_index);
     }
   }, [pageId]);
+
+  const handleIncomingFullSync = useCallback((payload: { page_id: string; layers: Layer[]; user_id: string }) => {
+    const freshCurrentUserId = useCollaborationPresenceStore.getState().currentUserId;
+    if (!freshCurrentUserId || payload.user_id === freshCurrentUserId) {
+      return;
+    }
+
+    const currentPageId = pageIdRef.current;
+    if (currentPageId && payload.page_id === currentPageId) {
+      markPageMcpSynced(currentPageId);
+      const { setDraftLayers } = usePagesStore.getState();
+      setDraftLayers(currentPageId, payload.layers);
+
+      // Set a 10-second page lock so the UI shows MCP is editing
+      const lockKey = getResourceLockKey('page', currentPageId);
+      useCollaborationPresenceStore.setState((state) => ({
+        resourceLocks: {
+          ...state.resourceLocks,
+          [lockKey]: {
+            resource_type: 'page',
+            resource_id: currentPageId,
+            user_id: payload.user_id,
+            acquired_at: Date.now(),
+            expires_at: Date.now() + 10_000,
+          },
+        },
+      }));
+    }
+  }, []);
 
   const processUpdateQueue = useCallback(() => {
     // Get fresh pageId from the ref (this will be the current value)

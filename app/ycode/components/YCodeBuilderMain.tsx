@@ -63,7 +63,7 @@ import { useLiveLayerStyleUpdates } from '@/hooks/use-live-layer-style-updates';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useClipboardStore } from '@/stores/useClipboardStore';
 import { useEditorStore } from '@/stores/useEditorStore';
-import { usePagesStore } from '@/stores/usePagesStore';
+import { usePagesStore, consumePageMcpSync } from '@/stores/usePagesStore';
 import { useComponentsStore } from '@/stores/useComponentsStore';
 import { useLayerStylesStore } from '@/stores/useLayerStylesStore';
 import { useCollaborationPresenceStore, getResourceLockKey, RESOURCE_TYPES } from '@/stores/useCollaborationPresenceStore';
@@ -854,9 +854,17 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
 
     // Only trigger save if layers actually changed for THIS page
     if (lastLayersJSON && lastLayersJSON !== currentLayersJSON) {
-      // Always trigger auto-save - undo/redo operations use markUndoRedoSave() to prevent version creation
-      setHasUnsavedChanges(true);
-      debouncedSave(currentPageId);
+      if (consumePageMcpSync(currentPageId)) {
+        // MCP already saved to DB — cancel any pending autosave and accept
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+          saveTimeoutRef.current = null;
+        }
+        setHasUnsavedChanges(false);
+      } else {
+        setHasUnsavedChanges(true);
+        debouncedSave(currentPageId);
+      }
     }
 
     // Update the ref for next comparison (store per page)

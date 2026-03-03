@@ -8,6 +8,7 @@ const INTEGRATIONS_ITEMS = [
   { id: 'apps', label: 'Apps', path: '/ycode/integrations/apps' },
   { id: 'webhooks', label: 'Webhooks', path: '/ycode/integrations/webhooks' },
   { id: 'api', label: 'API', path: '/ycode/integrations/api' },
+  { id: 'mcp', label: 'MCP', path: '/ycode/integrations/mcp' },
 ];
 
 interface IntegrationsContentProps {

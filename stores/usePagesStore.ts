@@ -106,6 +106,25 @@ interface PagesActions {
 
 type PagesStore = PagesState & PagesActions;
 
+/**
+ * Tracks pages that were just synced from MCP (server-side).
+ * The autosave watcher checks this to avoid overwriting MCP's DB writes
+ * with stale local state.
+ */
+const mcpSyncedPages = new Set<string>();
+
+export function markPageMcpSynced(pageId: string): void {
+  mcpSyncedPages.add(pageId);
+}
+
+export function consumePageMcpSync(pageId: string): boolean {
+  if (mcpSyncedPages.has(pageId)) {
+    mcpSyncedPages.delete(pageId);
+    return true;
+  }
+  return false;
+}
+
 function updateLayerInTree(tree: Layer[], layerId: string, updater: (l: Layer) => Layer): Layer[] {
   return tree.map((node) => {
     if (node.id === layerId) {
