@@ -1632,6 +1632,23 @@ const LayerItem: React.FC<{
         if (isLockedByOther) return;
         e.stopPropagation();
 
+        // Dynamic/CMS pages: open CollectionItemSheet to edit the CMS item
+        const editorState = useEditorStore.getState();
+        const itemId = editorState.currentPageCollectionItemId;
+        if (itemId) {
+          const currentPageId = editorState.currentPageId;
+          const page = currentPageId
+            ? usePagesStore.getState().pages.find(p => p.id === currentPageId)
+            : null;
+          if (page?.is_dynamic) {
+            const collectionId = page.settings?.cms?.collection_id;
+            if (collectionId) {
+              editorState.openCollectionItemSheet(collectionId, itemId);
+              return;
+            }
+          }
+        }
+
         // Image layers: open file manager for quick image replacement
         if (layer.name === 'image' || htmlTag === 'img') {
           openImageFileManager();

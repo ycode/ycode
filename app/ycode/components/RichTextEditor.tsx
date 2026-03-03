@@ -156,10 +156,23 @@ const DynamicVariableWithNodeView = DynamicVariable.extend({
       const updateListener = () => renderBadge();
       editor.on('update', updateListener);
 
+      // Re-render badge when editability changes (setEditable doesn't fire 'update')
+      let lastEditable = editor.isEditable;
+      const transactionListener = () => {
+        if (editor.isEditable !== lastEditable) {
+          lastEditable = editor.isEditable;
+          renderBadge();
+        }
+      };
+      editor.on('transaction', transactionListener);
+
       return {
         dom: container,
+        // Let React handle events inside the badge (prevents ProseMirror from swallowing clicks on the "x" button)
+        stopEvent: () => true,
         destroy: () => {
           editor.off('update', updateListener);
+          editor.off('transaction', transactionListener);
           setTimeout(() => root.unmount(), 0);
         },
       };
@@ -223,6 +236,16 @@ const RichTextComponentWithNodeView = RichTextComponent.extend({
 
       queueMicrotask(renderBlock);
 
+      // Re-render block when editability changes (setEditable doesn't fire 'update')
+      let lastEditable = editor.isEditable;
+      const transactionListener = () => {
+        if (editor.isEditable !== lastEditable) {
+          lastEditable = editor.isEditable;
+          renderBlock();
+        }
+      };
+      editor.on('transaction', transactionListener);
+
       return {
         dom: container,
         stopEvent: () => true,
@@ -239,6 +262,7 @@ const RichTextComponentWithNodeView = RichTextComponent.extend({
           return true;
         },
         destroy: () => {
+          editor.off('transaction', transactionListener);
           setTimeout(() => root.unmount(), 0);
         },
       };
@@ -397,6 +421,7 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
 
   const editor = useEditor({
     immediatelyRender: true,
+    editable: !disabled,
     extensions,
     content: (() => {
       if (withFormatting) {
