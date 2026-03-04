@@ -25,7 +25,7 @@ export default function UIStateSelector({ selectedLayer }: UIStateSelectorProps)
     return applicableTypes.includes(selectedLayer.name || '');
   };
 
-  const isTextLayer = selectedLayer?.name === 'text';
+  const isTextLayer = selectedLayer?.name === 'text' || selectedLayer?.name === 'richText';
 
   // Filter out dynamic styles (dts-*) from the dropdown - they're not user-selectable
   const allTextStyles = { ...DEFAULT_TEXT_STYLES, ...selectedLayer?.textStyles };

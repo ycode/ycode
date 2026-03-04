@@ -426,6 +426,12 @@ const RightSidebar = React.memo(function RightSidebar({
     return layer.name === 'text';
   };
 
+  // Helper function to check if layer is a rich text element
+  const isRichTextLayer = (layer: Layer | null): boolean => {
+    if (!layer) return false;
+    return layer.name === 'richText';
+  };
+
   // Helper function to check if layer is a button element
   const isButtonLayer = (layer: Layer | null): boolean => {
     if (!layer) return false;
@@ -483,7 +489,7 @@ const RightSidebar = React.memo(function RightSidebar({
         // Typography controls: show in text edit mode or for text elements, buttons, icons, form inputs, and body
         // Body typography cascades to all children (global font family, color, etc.)
         if (showTextStyleControls) return true;
-        return isTextLayer(layer) || isButtonLayer(layer) || isIconLayer(layer) || isFormInputLayer(layer) || layer.id === 'body';
+        return isTextLayer(layer) || isRichTextLayer(layer) || isButtonLayer(layer) || isIconLayer(layer) || isFormInputLayer(layer) || layer.id === 'body';
 
       case 'backgrounds':
         // Background controls: show for all elements (text layers need it for clip-text effects)
@@ -1896,8 +1902,8 @@ const RightSidebar = React.memo(function RightSidebar({
                 </div>
               )}
 
-              {/* Container Tag Selector - Only for containers/sections/blocks, hide for alerts */}
-              {isContainerLayer(selectedLayer) && !isHeadingLayer(selectedLayer) && !isAlertLayer(selectedLayer) && (
+              {/* Container Tag Selector - Only for containers/sections/blocks, hide for alerts and richText */}
+              {isContainerLayer(selectedLayer) && !isHeadingLayer(selectedLayer) && !isAlertLayer(selectedLayer) && !isRichTextLayer(selectedLayer) && (
                 <div className="grid grid-cols-3">
                   <Label variant="muted">Tag</Label>
                   <div className="col-span-2 *:w-full">
@@ -2066,6 +2072,7 @@ const RightSidebar = React.memo(function RightSidebar({
                           allFields={fields}
                           collections={collections}
                           disabled={showTextStyleControls}
+                          hidePreview={isRichTextLayer(selectedLayer)}
                         />
                       )}
                     </div>
@@ -2075,7 +2082,7 @@ const RightSidebar = React.memo(function RightSidebar({
             })()}
 
             {/* Link Settings - hide for form-related layers, buttons inside forms, and layers inside buttons */}
-            {selectedLayer && !['form', 'select', 'input', 'textarea', 'checkbox', 'radio', 'label'].includes(selectedLayer.name) && selectedLayer.settings?.tag !== 'label' && !shouldHideLinkSettings && (
+            {selectedLayer && !['form', 'select', 'input', 'textarea', 'checkbox', 'radio', 'label', 'richText'].includes(selectedLayer.name) && selectedLayer.settings?.tag !== 'label' && !shouldHideLinkSettings && (
               <LinkSettings
                 layer={selectedLayer}
                 onLayerUpdate={handleLayerUpdate}

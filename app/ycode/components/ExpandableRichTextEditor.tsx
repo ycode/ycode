@@ -28,6 +28,8 @@ interface ExpandableRichTextEditorProps {
   allFields?: Record<string, CollectionField[]>;
   collections?: Collection[];
   disabled?: boolean;
+  /** Hide the inline compact editor preview, only show the button */
+  hidePreview?: boolean;
 }
 
 export default function ExpandableRichTextEditor({
@@ -41,6 +43,7 @@ export default function ExpandableRichTextEditor({
   allFields,
   collections,
   disabled = false,
+  hidePreview = false,
 }: ExpandableRichTextEditorProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const isComplex = useMemo(() => hasLinkOrComponent(value), [value]);
@@ -59,7 +62,7 @@ export default function ExpandableRichTextEditor({
         <span><Icon name="expand" className="size-2.5" /></span>
       </Button>
 
-      {!isComplex && (
+      {!hidePreview && !isComplex && !sheetOpen && (
         <RichTextEditor
           value={value}
           onChange={onChange}

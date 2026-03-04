@@ -1638,6 +1638,12 @@ const LayerItem: React.FC<{
           return;
         }
 
+        // Rich text element: always open sheet editor (never inline editing)
+        if (layer.name === 'richText') {
+          useEditorStore.getState().openRichTextSheet(layer.id);
+          return;
+        }
+
         // Rich text with components or inline variables: open sheet editor instead of canvas editing
         if (textEditable) {
           const textVar = layer.variables?.text;

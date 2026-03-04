@@ -324,6 +324,11 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
   const [componentPickerOpen, setComponentPickerOpen] = useState(false);
   // Track if update is coming from editor to prevent infinite loop
   const isInternalUpdateRef = useRef(false);
+  // Refs to avoid stale closures in useEditor's onUpdate callback
+  const valueRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+  valueRef.current = value;
+  onChangeRef.current = onChange;
 
   // Derive a flat list of fields from fieldGroups (for internal use like parseValueToContent)
   const fields = useMemo(() => flattenFieldGroups(fieldGroups), [fieldGroups]);
@@ -360,18 +365,12 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
         BulletList,
         OrderedList,
         ListItem,
+        Heading.configure({
+          levels: [1, 2, 3, 4, 5, 6],
+        }),
         Blockquote,
         Code,
       ];
-
-      // Add heading extension for full variant (CMS rich-text)
-      if (isFullVariant) {
-        formattingExtensions.push(
-          Heading.configure({
-            levels: [1, 2, 3, 4, 5, 6],
-          })
-        );
-      }
 
       // Add link extension unless explicitly disabled
       if (!disableLinks) {
@@ -441,29 +440,32 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
       },
     },
     onUpdate: ({ editor }) => {
-      // Don't trigger updates if editor is disabled (e.g., during canvas text editing)
       if (!editor.isEditable) {
         return;
       }
 
-      // Mark that this update is coming from the editor
+      // Skip onChange when update was triggered by programmatic setContent
+      // (e.g. syncing external value changes from the sync effect)
+      if (isInternalUpdateRef.current) {
+        return;
+      }
+
       isInternalUpdateRef.current = true;
 
-      // When withFormatting is enabled, emit full Tiptap JSON
-      // Otherwise emit string format for backward compatibility
       const newValue = withFormatting
         ? editor.getJSON()
         : convertContentToValue(editor.getJSON());
 
+      const currentValue = valueRef.current;
+      const currentOnChange = onChangeRef.current;
+
       if (withFormatting) {
-        // Compare JSON objects
-        if (JSON.stringify(newValue) !== JSON.stringify(value)) {
-          onChange(newValue);
+        if (JSON.stringify(newValue) !== JSON.stringify(currentValue)) {
+          currentOnChange(newValue);
         }
       } else {
-        // Compare strings
-        if (newValue !== value) {
-          onChange(newValue);
+        if (newValue !== currentValue) {
+          currentOnChange(newValue);
         }
       }
     },
@@ -567,11 +569,10 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
       } else {
         content = parseValueToContent(typeof value === 'string' ? value : '', fields, undefined, allFields);
       }
+      // Flag as programmatic update so onUpdate skips onChange
+      isInternalUpdateRef.current = true;
       editor.commands.setContent(content);
-
-      // Reset internal update flag — setContent triggers onUpdate synchronously
-      // which sets isInternalUpdateRef=true, but this was a programmatic update
-      // (not a user edit), so we must clear it to allow the next useEffect to run
+      // Reset flag so next user edit will trigger onChange normally
       isInternalUpdateRef.current = false;
 
       // Only focus if editor was already focused (user was actively editing)
