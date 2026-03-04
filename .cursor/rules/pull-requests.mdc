@@ -36,6 +36,7 @@ Examples: `feat: add custom domain management`, `fix: prevent primary domain del
 
 ## Rules
 
+- **Base branch**: always create PRs against the `develop` branch
 - **No AI attribution**: never mention Cursor, AI, copilot, or assistant
 - **Summary over detail**: reviewers read the diff — the PR describes intent
 - **Imperative mood** throughout: "Add", "Fix", "Remove", not past tense
