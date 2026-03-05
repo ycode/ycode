@@ -31,6 +31,9 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
+// 3.5 Internal UI
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+
 // 4. Internal components
 import AddAttributeModal from './AddAttributeModal';
 import BackgroundsControls from './BackgroundsControls';
@@ -59,6 +62,7 @@ import InteractionsPanel from './InteractionsPanel';
 import LayoutControls from './LayoutControls';
 import LayerStylesPanel from './LayerStylesPanel';
 import PositionControls from './PositionControls';
+import RichTextStylesPanel from './RichTextStylesPanel';
 import SettingsPanel from './SettingsPanel';
 import SizingControls from './SizingControls';
 import SpacingControls from './SpacingControls';
@@ -77,6 +81,7 @@ import { useEditorActions, useEditorUrl } from '@/hooks/use-editor-url';
 
 // 5.5 Hooks
 import { useLayerLocks } from '@/hooks/use-layer-locks';
+import { useLiveLayerStyleUpdates } from '@/hooks/use-live-layer-style-updates';
 
 // 6. Utils, APIs, lib
 import { classesToDesign, mergeDesign, removeConflictsForClass, getRemovedPropertyClasses } from '@/lib/tailwind-class-mapper';
@@ -87,7 +92,8 @@ import { detachSpecificLayerFromComponent } from '@/lib/component-utils';
 import { convertContentToValue, parseValueToContent } from '@/lib/cms-variables-utils';
 import { createTextComponentVariableValue } from '@/lib/variable-utils';
 import { getRichTextValue } from '@/lib/tiptap-utils';
-import { DEFAULT_TEXT_STYLES, getTextStyle } from '@/lib/text-format-utils';
+import { DEFAULT_TEXT_STYLES, getTextStyle, getTextStyleLabel } from '@/lib/text-format-utils';
+import { detachStyleAcrossStores, updateStyleAcrossStores } from '@/lib/layer-style-store-utils';
 import { buildFieldGroupsForLayer, getFieldIcon, isMultipleAssetField, MULTI_ASSET_COLLECTION_ID } from '@/lib/collection-field-utils';
 
 // 7. Types
@@ -168,6 +174,15 @@ const RightSidebar = React.memo(function RightSidebar({
   const [localeLabelOpen, setLocaleLabelOpen] = useState(true);
   const [variablesDialogOpen, setVariablesDialogOpen] = useState(false);
   const [variablesDialogInitialId, setVariablesDialogInitialId] = useState<string | null>(null);
+  const [textStyleNewName, setTextStyleNewName] = useState('');
+  const [isCreatingTextStyle, setIsCreatingTextStyle] = useState(false);
+  const [isRenamingTextStyle, setIsRenamingTextStyle] = useState(false);
+  const [textStyleRenameValue, setTextStyleRenameValue] = useState('');
+  const [textStyleDeleteDialogOpen, setTextStyleDeleteDialogOpen] = useState(false);
+
+  const textStylesPanelRef = useRef<HTMLDivElement>(null);
+  const textStylePanelRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
 
   const openVariablesDialog = (variableId?: string) => {
     setVariablesDialogInitialId(variableId ?? null);
@@ -186,6 +201,7 @@ const RightSidebar = React.memo(function RightSidebar({
   const setActiveInteraction = useEditorStore((state) => state.setActiveInteraction);
   const clearActiveInteraction = useEditorStore((state) => state.clearActiveInteraction);
   const activeTextStyleKey = useEditorStore((state) => state.activeTextStyleKey);
+  const setActiveTextStyleKey = useEditorStore((state) => state.setActiveTextStyleKey);
   const showTextStyleControls = useEditorStore((state) => state.showTextStyleControls());
   const startElementPicker = useEditorStore((state) => state.startElementPicker);
   const stopElementPicker = useEditorStore((state) => state.stopElementPicker);
@@ -629,7 +645,8 @@ const RightSidebar = React.memo(function RightSidebar({
   }, [classesInput]);
 
   // Get applied layer style and its classes
-  const { getStyleById } = useLayerStylesStore();
+  const { styles: layerStyles, getStyleById, createStyle: createLayerStyle, updateStyle: updateLayerStyle, deleteStyle: deleteLayerStyle } = useLayerStylesStore();
+  const liveLayerStyleUpdates = useLiveLayerStyleUpdates();
   const appliedStyle = selectedLayer?.styleId ? getStyleById(selectedLayer.styleId) : undefined;
   const styleClassesArray = useMemo(() => {
     if (!appliedStyle || !appliedStyle.classes) return [];
@@ -1669,6 +1686,17 @@ const RightSidebar = React.memo(function RightSidebar({
     }
   };
 
+  const isTextStylePanelOpen = !!selectedLayer && isRichTextLayer(selectedLayer) && !!activeTextStyleKey;
+  const hideForTextStyle = showTextStyleControls && !!selectedLayer && !isRichTextLayer(selectedLayer);
+
+  const textStylePanelTop = useMemo(() => {
+    if (!textStylesPanelRef.current || !sidebarRef.current) return 0;
+    const panelRect = textStylesPanelRef.current.getBoundingClientRect();
+    const sidebarRect = sidebarRef.current.getBoundingClientRect();
+    return panelRect.top - sidebarRect.top;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTextStylePanelOpen, activeTextStyleKey]);
+
   if (!selectedLayerId || !selectedLayer) {
     return (
       <div className="w-64 shrink-0 bg-background border-l flex items-center justify-center h-screen">
@@ -1699,7 +1727,352 @@ const RightSidebar = React.memo(function RightSidebar({
   }
 
   return (
-    <div className="w-64 shrink-0 bg-background border-l flex flex-col p-4 pb-0 h-full overflow-hidden">
+    <div className="shrink-0 relative" ref={sidebarRef}>
+      {/* Text Style floating panel — positioned to the left over the canvas */}
+      {isTextStylePanelOpen && (() => {
+        const style = getTextStyle(selectedLayer?.textStyles, activeTextStyleKey);
+        const label = getTextStyleLabel(activeTextStyleKey!, style);
+
+        const textStyleData = getTextStyle(selectedLayer?.textStyles, activeTextStyleKey);
+        const textStyleClasses = textStyleData?.classes || '';
+        const textStyleDesign = textStyleData?.design;
+        const linkedStyleId = selectedLayer?.textStyles?.[activeTextStyleKey!]?.styleId;
+        const linkedStyle = linkedStyleId ? getStyleById(linkedStyleId) : undefined;
+
+        const handleApplyLayerStyle = (styleId: string) => {
+          if (!selectedLayer || !activeTextStyleKey) return;
+          const layerStyle = getStyleById(styleId);
+          if (!layerStyle) return;
+
+          const currentTextStyles = selectedLayer.textStyles ?? {};
+          const currentTextStyle = currentTextStyles[activeTextStyleKey] || {};
+
+          handleLayerUpdate(selectedLayer.id, {
+            textStyles: {
+              ...currentTextStyles,
+              [activeTextStyleKey]: {
+                ...currentTextStyle,
+                classes: layerStyle.classes || '',
+                design: layerStyle.design || {},
+                styleId: layerStyle.id,
+              },
+            },
+          });
+        };
+
+        const handleCreateTextStyleAsLayerStyle = async () => {
+          if (!selectedLayer || !activeTextStyleKey || !textStyleNewName.trim()) return;
+          const newStyle = await createLayerStyle(textStyleNewName.trim(), textStyleClasses, textStyleDesign);
+          if (newStyle) {
+            const currentTextStyles = selectedLayer.textStyles ?? {};
+            const currentTextStyle = currentTextStyles[activeTextStyleKey] || {};
+            handleLayerUpdate(selectedLayer.id, {
+              textStyles: {
+                ...currentTextStyles,
+                [activeTextStyleKey]: {
+                  ...currentTextStyle,
+                  styleId: newStyle.id,
+                },
+              },
+            });
+            setTextStyleNewName('');
+            setIsCreatingTextStyle(false);
+            if (liveLayerStyleUpdates) {
+              liveLayerStyleUpdates.broadcastStyleCreate(newStyle);
+            }
+          }
+        };
+
+        const handleUpdateLinkedStyle = async () => {
+          if (!linkedStyle || !selectedLayer || !activeTextStyleKey) return;
+          await updateLayerStyle(linkedStyle.id, {
+            classes: textStyleClasses,
+            design: textStyleDesign,
+          });
+          updateStyleAcrossStores(linkedStyle.id, textStyleClasses, textStyleDesign);
+          if (liveLayerStyleUpdates) {
+            liveLayerStyleUpdates.broadcastStyleUpdate(linkedStyle.id, {
+              classes: textStyleClasses,
+              design: textStyleDesign,
+            });
+          }
+        };
+
+        const handleDetachLinkedStyle = () => {
+          if (!selectedLayer || !activeTextStyleKey) return;
+          const currentTextStyles = selectedLayer.textStyles ?? {};
+          const currentTextStyle = currentTextStyles[activeTextStyleKey] || {};
+          const { styleId: _, ...rest } = currentTextStyle;
+          handleLayerUpdate(selectedLayer.id, {
+            textStyles: {
+              ...currentTextStyles,
+              [activeTextStyleKey]: rest,
+            },
+          });
+        };
+
+        return (
+          <div
+            ref={textStylePanelRef} className="absolute w-64 bg-background border rounded-lg shadow-lg z-50 flex flex-col overflow-hidden"
+            style={{ right: 'calc(100% + 16px)', top: textStylePanelTop, maxHeight: `calc(100% - ${textStylePanelTop}px - 16px)` }}
+          >
+            <div className="flex items-center justify-between p-4 pb-0">
+              <Label>{label}</Label>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="size-6! p-0!"
+                onClick={() => setActiveTextStyleKey(null)}
+              >
+                <Icon name="x" className="size-3" />
+              </Button>
+            </div>
+
+            <div className="px-4 pt-3 flex flex-col gap-2">
+              {isCreatingTextStyle ? (
+                <div className="flex flex-col gap-2">
+                  <Input
+                    placeholder="Style name..."
+                    value={textStyleNewName}
+                    onChange={(e) => setTextStyleNewName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleCreateTextStyleAsLayerStyle();
+                      if (e.key === 'Escape') {
+                        setIsCreatingTextStyle(false);
+                        setTextStyleNewName('');
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      variant="default"
+                      onClick={handleCreateTextStyleAsLayerStyle}
+                      disabled={!textStyleNewName.trim()}
+                    >
+                      Create
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setIsCreatingTextStyle(false);
+                        setTextStyleNewName('');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : isRenamingTextStyle && linkedStyle ? (
+                <div className="flex flex-col gap-2">
+                  <Input
+                    value={textStyleRenameValue}
+                    onChange={(e) => setTextStyleRenameValue(e.target.value)}
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter' && textStyleRenameValue.trim()) {
+                        await updateLayerStyle(linkedStyle.id, { name: textStyleRenameValue.trim() });
+                        if (liveLayerStyleUpdates) {
+                          liveLayerStyleUpdates.broadcastStyleUpdate(linkedStyle.id, { name: textStyleRenameValue.trim() });
+                        }
+                        setIsRenamingTextStyle(false);
+                        setTextStyleRenameValue('');
+                      }
+                      if (e.key === 'Escape') {
+                        setIsRenamingTextStyle(false);
+                        setTextStyleRenameValue('');
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      variant="default"
+                      onClick={async () => {
+                        if (textStyleRenameValue.trim()) {
+                          await updateLayerStyle(linkedStyle.id, { name: textStyleRenameValue.trim() });
+                          if (liveLayerStyleUpdates) {
+                            liveLayerStyleUpdates.broadcastStyleUpdate(linkedStyle.id, { name: textStyleRenameValue.trim() });
+                          }
+                          setIsRenamingTextStyle(false);
+                          setTextStyleRenameValue('');
+                        }
+                      }}
+                      disabled={!textStyleRenameValue.trim()}
+                    >
+                      Save changes
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setIsRenamingTextStyle(false);
+                        setTextStyleRenameValue('');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <Select
+                    onValueChange={handleApplyLayerStyle}
+                    value={linkedStyleId || ''}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a style..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {layerStyles.length > 0 ? (
+                        <SelectGroup>
+                          {layerStyles.map((ls) => (
+                            <SelectItem key={ls.id} value={ls.id}>
+                              {ls.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      ) : (
+                        <div className="px-2 py-4 text-xs text-muted-foreground text-center">
+                          No styles yet
+                        </div>
+                      )}
+                    </SelectContent>
+                  </Select>
+
+                  <div className="flex">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setIsCreatingTextStyle(true)}
+                      className="flex-1"
+                    >
+                      <Icon name="plus" />
+                      New
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleUpdateLinkedStyle}
+                      disabled={!linkedStyle}
+                    >
+                      Update
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleDetachLinkedStyle}
+                      disabled={!linkedStyle}
+                    >
+                      Detach
+                    </Button>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="ghost">
+                          <Icon name="more" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          disabled={!linkedStyle}
+                          onClick={() => {
+                            if (!linkedStyle) return;
+                            const currentTextStyles = selectedLayer?.textStyles ?? {};
+                            const currentTextStyle = currentTextStyles[activeTextStyleKey!] || {};
+                            handleLayerUpdate(selectedLayer!.id, {
+                              textStyles: {
+                                ...currentTextStyles,
+                                [activeTextStyleKey!]: {
+                                  ...currentTextStyle,
+                                  classes: linkedStyle.classes || '',
+                                  design: linkedStyle.design || {},
+                                },
+                              },
+                            });
+                          }}
+                        >
+                          Reset
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={!linkedStyle}
+                          onClick={() => {
+                            if (!linkedStyle) return;
+                            setTextStyleRenameValue(linkedStyle.name);
+                            setIsRenamingTextStyle(true);
+                          }}
+                        >
+                          Rename
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={!linkedStyle}
+                          onClick={() => {
+                            if (!linkedStyle) return;
+                            setTextStyleDeleteDialogOpen(true);
+                          }}
+                        >
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <ConfirmDialog
+              open={textStyleDeleteDialogOpen}
+              onOpenChange={setTextStyleDeleteDialogOpen}
+              title="Delete layer style"
+              description="Are you sure you want to delete this style? It will be detached from all layers."
+              confirmLabel="Delete"
+              confirmVariant="destructive"
+              onConfirm={async () => {
+                if (!linkedStyle) return;
+                handleDetachLinkedStyle();
+                const result = await deleteLayerStyle(linkedStyle.id);
+                if (result.success) {
+                  detachStyleAcrossStores(linkedStyle.id);
+                  if (liveLayerStyleUpdates) {
+                    liveLayerStyleUpdates.broadcastStyleDelete(linkedStyle.id);
+                  }
+                } else {
+                  throw new Error('Failed to delete layer style');
+                }
+              }}
+            />
+
+            <hr className="mx-4 mt-4" />
+
+            <div className="flex-1 flex flex-col divide-y overflow-y-auto no-scrollbar px-4 pb-0">
+              <TypographyControls
+                layer={selectedLayer}
+                onLayerUpdate={handleLayerUpdate}
+                activeTextStyleKey={activeTextStyleKey}
+              />
+
+              <SpacingControls
+                layer={selectedLayer}
+                onLayerUpdate={handleLayerUpdate}
+                activeTextStyleKey={activeTextStyleKey}
+              />
+
+              <BackgroundsControls
+                layer={selectedLayer}
+                onLayerUpdate={handleLayerUpdate}
+                activeTextStyleKey={activeTextStyleKey}
+              />
+            </div>
+          </div>
+        );
+      })()}
+
+      <div
+        className="w-64 bg-background border-l flex flex-col p-4 pb-0 h-full overflow-hidden"
+        onClick={() => { if (isTextStylePanelOpen) setActiveTextStyleKey(null); }}
+      >
       {/* Tabs */}
       <Tabs
         value={activeTab}
@@ -1720,78 +2093,88 @@ const RightSidebar = React.memo(function RightSidebar({
         <TabsContent value="design" className="flex-1 flex flex-col divide-y overflow-y-auto no-scrollbar data-[state=inactive]:hidden overflow-x-hidden mt-0">
 
           {/* Layer Styles Panel - only show for default layer style and not in text style mode */}
-          {!showTextStyleControls && (
-            <LayerStylesPanel
-              layer={selectedLayer}
-              pageId={currentPageId}
-              onLayerUpdate={handleLayerUpdate}
-            />
-          )}
+              {!hideForTextStyle && (
+                <LayerStylesPanel
+                  layer={selectedLayer}
+                  pageId={currentPageId}
+                  onLayerUpdate={handleLayerUpdate}
+                />
+              )}
 
-          {activeTab === 'design' && (
-            <UIStateSelector selectedLayer={selectedLayer} />
-          )}
+              {activeTab === 'design' && (
+                <UIStateSelector selectedLayer={selectedLayer} />
+              )}
 
-          {shouldShowControl('layout', selectedLayer) && !showTextStyleControls && (
-            <LayoutControls layer={selectedLayer} onLayerUpdate={handleLayerUpdate} />
-          )}
+              {/* Rich Text Styles Panel - only for richText layers */}
+              {isRichTextLayer(selectedLayer) && (
+                <RichTextStylesPanel
+                  ref={textStylesPanelRef}
+                  layer={selectedLayer}
+                  activeStyleKey={activeTextStyleKey}
+                  onStyleSelect={(key) => setActiveTextStyleKey(key)}
+                />
+              )}
 
-          {shouldShowControl('spacing', selectedLayer) && (
-            <SpacingControls
-              layer={selectedLayer}
-              onLayerUpdate={handleLayerUpdate}
-              activeTextStyleKey={activeTextStyleKey}
-            />
-          )}
+              {shouldShowControl('layout', selectedLayer) && !hideForTextStyle && !isRichTextLayer(selectedLayer) && (
+                <LayoutControls layer={selectedLayer} onLayerUpdate={handleLayerUpdate} />
+              )}
 
-          {shouldShowControl('sizing', selectedLayer) && !showTextStyleControls && (
-            <SizingControls layer={selectedLayer} onLayerUpdate={handleLayerUpdate} />
-          )}
+              {shouldShowControl('spacing', selectedLayer) && (
+                <SpacingControls
+                  layer={selectedLayer}
+                  onLayerUpdate={handleLayerUpdate}
+                  activeTextStyleKey={isRichTextLayer(selectedLayer) ? null : activeTextStyleKey}
+                />
+              )}
 
-          {shouldShowControl('typography', selectedLayer) && (
-            <TypographyControls
-              layer={selectedLayer}
-              onLayerUpdate={handleLayerUpdate}
-              activeTextStyleKey={activeTextStyleKey}
-              fieldGroups={fieldGroups}
-              allFields={fields}
-              collections={collections}
-            />
-          )}
+              {shouldShowControl('sizing', selectedLayer) && !hideForTextStyle && (
+                <SizingControls layer={selectedLayer} onLayerUpdate={handleLayerUpdate} />
+              )}
 
-          {shouldShowControl('backgrounds', selectedLayer) && (
-            <BackgroundsControls
-              layer={selectedLayer}
-              onLayerUpdate={handleLayerUpdate}
-              activeTextStyleKey={activeTextStyleKey}
-              fieldGroups={fieldGroups}
-              allFields={fields}
-              collections={collections}
-            />
-          )}
+              {shouldShowControl('typography', selectedLayer) && (
+                <TypographyControls
+                  layer={selectedLayer}
+                  onLayerUpdate={handleLayerUpdate}
+                  activeTextStyleKey={isRichTextLayer(selectedLayer) ? null : activeTextStyleKey}
+                  fieldGroups={fieldGroups}
+                  allFields={fields}
+                  collections={collections}
+                />
+              )}
 
-          {shouldShowControl('borders', selectedLayer) && (
-            <BorderControls
-              layer={selectedLayer}
-              onLayerUpdate={handleLayerUpdate}
-              activeTextStyleKey={activeTextStyleKey}
-              fieldGroups={fieldGroups}
-              allFields={fields}
-              collections={collections}
-            />
-          )}
+              {shouldShowControl('backgrounds', selectedLayer) && (
+                <BackgroundsControls
+                  layer={selectedLayer}
+                  onLayerUpdate={handleLayerUpdate}
+                  activeTextStyleKey={isRichTextLayer(selectedLayer) ? null : activeTextStyleKey}
+                  fieldGroups={fieldGroups}
+                  allFields={fields}
+                  collections={collections}
+                />
+              )}
 
-          {shouldShowControl('effects', selectedLayer) && (
-            <EffectControls
-              layer={selectedLayer}
-              onLayerUpdate={handleLayerUpdate}
-              activeTextStyleKey={activeTextStyleKey}
-            />
-          )}
+              {shouldShowControl('borders', selectedLayer) && (
+                <BorderControls
+                  layer={selectedLayer}
+                  onLayerUpdate={handleLayerUpdate}
+                  activeTextStyleKey={isRichTextLayer(selectedLayer) ? null : activeTextStyleKey}
+                  fieldGroups={fieldGroups}
+                  allFields={fields}
+                  collections={collections}
+                />
+              )}
 
-          {shouldShowControl('position', selectedLayer) && !showTextStyleControls && (
-            <PositionControls layer={selectedLayer} onLayerUpdate={handleLayerUpdate} />
-          )}
+              {shouldShowControl('effects', selectedLayer) && (
+                <EffectControls
+                  layer={selectedLayer}
+                  onLayerUpdate={handleLayerUpdate}
+                  activeTextStyleKey={isRichTextLayer(selectedLayer) ? null : activeTextStyleKey}
+                />
+              )}
+
+              {shouldShowControl('position', selectedLayer) && !hideForTextStyle && (
+                <PositionControls layer={selectedLayer} onLayerUpdate={handleLayerUpdate} />
+              )}
 
           {/* Classes panel - shows classes for active text style or layer */}
           <SettingsPanel
@@ -1799,69 +2182,69 @@ const RightSidebar = React.memo(function RightSidebar({
             isOpen={classesOpen}
             onToggle={() => setClassesOpen(!classesOpen)}
           >
-            <div className="flex flex-col gap-3">
-              <Input
-                value={currentClassInput}
-                onChange={(e) => setCurrentClassInput(e.target.value)}
-                onKeyDown={handleKeyPress}
-                placeholder="Type class and press Enter..."
-                disabled={isLockedByOther}
-                className={isLockedByOther ? 'opacity-50 cursor-not-allowed' : ''}
-              />
+              <div className="flex flex-col gap-3">
+                <Input
+                  value={currentClassInput}
+                  onChange={(e) => setCurrentClassInput(e.target.value)}
+                  onKeyDown={handleKeyPress}
+                  placeholder="Type class and press Enter..."
+                  disabled={isLockedByOther}
+                  className={isLockedByOther ? 'opacity-50 cursor-not-allowed' : ''}
+                />
 
-              {layerOnlyClasses.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {/* Layer's own classes (excluding style classes) */}
-                  {layerOnlyClasses.map((cls, index) => (
-                    <Badge
-                      variant="secondary"
-                      key={`layer-${index}`}
-                    >
-                      <span>{cls}</span>
-                      <Button
-                        onClick={() => removeClass(cls)}
-                        className="size-4! p-0! -mr-1"
-                        variant="outline"
-                        disabled={isLockedByOther}
-                      >
-                        <Icon name="x" className="size-2" />
-                      </Button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-
-              {/* Layer style classes (strikethrough if overridden) */}
-              {styleClassesArray.length > 0 && (
-                <div className="flex flex-col gap-2.5">
-                  <div className="py-1 w-full flex items-center gap-2">
-                    <Separator className="flex-1" />
-                    <div className="text-xs text-muted-foreground">
-                      <span className="font-semibold">{appliedStyle?.name}</span> classes
-                    </div>
-                    <Separator className="flex-1" />
-                  </div>
-
+                {layerOnlyClasses.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
-                    {styleClassesArray.map((cls, index) => {
-                      const isOverridden = overriddenStyleClasses.has(cls);
-                      return (
-                        <Badge
-                          variant="secondary"
-                          key={`style-${index}`}
-                          className="opacity-60"
+                    {/* Layer's own classes (excluding style classes) */}
+                    {layerOnlyClasses.map((cls, index) => (
+                      <Badge
+                        variant="secondary"
+                        key={`layer-${index}`}
+                      >
+                        <span>{cls}</span>
+                        <Button
+                          onClick={() => removeClass(cls)}
+                          className="size-4! p-0! -mr-1"
+                          variant="outline"
+                          disabled={isLockedByOther}
                         >
-                          <span className={isOverridden ? 'line-through' : ''}>
-                            {cls}
-                          </span>
-                        </Badge>
-                      );
-                    })}
+                          <Icon name="x" className="size-2" />
+                        </Button>
+                      </Badge>
+                    ))}
                   </div>
-                </div>
-              )}
-            </div>
-          </SettingsPanel>
+                )}
+
+                {/* Layer style classes (strikethrough if overridden) */}
+                {styleClassesArray.length > 0 && (
+                  <div className="flex flex-col gap-2.5">
+                    <div className="py-1 w-full flex items-center gap-2">
+                      <Separator className="flex-1" />
+                      <div className="text-xs text-muted-foreground">
+                        <span className="font-semibold">{appliedStyle?.name}</span> classes
+                      </div>
+                      <Separator className="flex-1" />
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {styleClassesArray.map((cls, index) => {
+                        const isOverridden = overriddenStyleClasses.has(cls);
+                        return (
+                          <Badge
+                            variant="secondary"
+                            key={`style-${index}`}
+                            className="opacity-60"
+                          >
+                            <span className={isOverridden ? 'line-through' : ''}>
+                              {cls}
+                            </span>
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </SettingsPanel>
         </TabsContent>
 
         <TabsContent value="settings" className="flex-1 overflow-y-auto no-scrollbar mt-0 data-[state=inactive]:hidden">
@@ -2723,6 +3106,7 @@ const RightSidebar = React.memo(function RightSidebar({
         componentId={editingComponentId}
         initialVariableId={variablesDialogInitialId}
       />
+    </div>
     </div>
   );
 });

@@ -238,9 +238,10 @@ export type TweenProperties = {
 };
 
 export interface TextStyle {
-  label?: string; // Display label for the style (e.g., "Bold", "Italic")
+  label?: string;
   classes?: string;
   design?: DesignProperties;
+  styleId?: string;
 }
 
 export interface Layer {

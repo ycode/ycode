@@ -324,6 +324,9 @@ function renderTextNode(
         case 'superscript':
           text = React.createElement('sup', buildProps('superscript', getMarkClass('superscript')), text);
           break;
+        case 'code':
+          text = React.createElement('code', buildProps('code', getMarkClass('code')), text);
+          break;
         case 'dynamicStyle': {
           // Dynamic style stores an array of styleKeys
           const styleKeys: string[] = mark.attrs?.styleKeys || [];
