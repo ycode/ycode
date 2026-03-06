@@ -1,16 +1,10 @@
 'use client';
 
 /**
- * Compact rich-text editor with an "Richtext editor" button that opens
- * a RichTextEditorSheet for full-featured editing.
+ * Compact rich-text editor for inline content editing.
  */
 
-import { useMemo, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import Icon from '@/components/ui/icon';
 import RichTextEditor from './RichTextEditor';
-import RichTextEditorSheet from './RichTextEditorSheet';
-import { hasLinkOrComponent } from '@/lib/tiptap-utils';
 import type { CollectionField, Collection } from '@/types';
 import type { FieldGroup } from '@/lib/collection-field-utils';
 
@@ -35,60 +29,23 @@ export default function ExpandableRichTextEditor({
   onChange,
   onBlur,
   placeholder = 'Enter value...',
-  sheetTitle,
-  sheetDescription,
   fieldGroups,
   allFields,
   collections,
   disabled = false,
 }: ExpandableRichTextEditorProps) {
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const isComplex = useMemo(() => hasLinkOrComponent(value), [value]);
-
   return (
-    <div className="flex flex-col gap-1.5">
-      <Button
-        type="button"
-        size="sm"
-        variant="secondary"
-        className="w-full gap-2.5"
-        onClick={() => setSheetOpen(true)}
-        disabled={disabled}
-      >
-        Richtext editor
-        <span><Icon name="expand" className="size-2.5" /></span>
-      </Button>
-
-      {!isComplex && (
-        <RichTextEditor
-          value={value}
-          onChange={onChange}
-          onBlur={onBlur}
-          placeholder={placeholder}
-          fieldGroups={fieldGroups}
-          allFields={allFields}
-          collections={collections}
-          withFormatting={true}
-          showFormattingToolbar={false}
-          disabled={disabled}
-        />
-      )}
-
-      <RichTextEditorSheet
-        open={sheetOpen}
-        onOpenChange={(open) => {
-          setSheetOpen(open);
-          if (!open) onBlur?.(value);
-        }}
-        title={sheetTitle}
-        description={sheetDescription}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        fieldGroups={fieldGroups}
-        allFields={allFields}
-        collections={collections}
-      />
-    </div>
+    <RichTextEditor
+      value={value}
+      onChange={onChange}
+      onBlur={onBlur}
+      placeholder={placeholder}
+      fieldGroups={fieldGroups}
+      allFields={allFields}
+      collections={collections}
+      withFormatting={true}
+      showFormattingToolbar={false}
+      disabled={disabled}
+    />
   );
 }
