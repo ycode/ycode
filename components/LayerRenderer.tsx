@@ -1590,6 +1590,26 @@ const LayerItem: React.FC<{
       if (SWIPER_DATA_ATTR_MAP[layer.name]) {
         elementProps[SWIPER_DATA_ATTR_MAP[layer.name]] = '';
       }
+
+      // Lightbox data attributes (LightboxInitializer)
+      if (layer.name === 'lightbox' && layer.settings?.lightbox) {
+        const lbSettings = layer.settings.lightbox;
+        elementProps['data-lightbox-id'] = lbSettings.groupId || layer.id;
+        const { filesField: _ff, filesSource: _fs, ...runtimeSettings } = lbSettings;
+        elementProps['data-lightbox-settings'] = JSON.stringify(runtimeSettings);
+        const resolvedFiles = lbSettings.files
+          .map((fileId: string) => {
+            if (fileId.startsWith('http') || fileId.startsWith('/')) return fileId;
+            return getAsset(fileId)?.public_url ?? null;
+          })
+          .filter(Boolean) as string[];
+        if (resolvedFiles.length) {
+          elementProps['data-lightbox-files'] = resolvedFiles.join(',');
+        }
+        if (lbSettings.groupId && resolvedFiles.length > 0) {
+          elementProps['data-lightbox-open-to'] = resolvedFiles[0];
+        }
+      }
     }
 
     // Hide elements with hiddenGenerated: true by default (in all modes)

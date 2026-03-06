@@ -48,6 +48,7 @@ import FilterSettings from './FilterSettings';
 import AlertSettings from './AlertSettings';
 import HTMLEmbedSettings from './HTMLEmbedSettings';
 import SliderSettings from './SliderSettings';
+import LightboxSettings from './LightboxSettings';
 import InputSettings from './InputSettings';
 import SelectOptionsSettings from './SelectOptionsSettings';
 import LabelSettings from './LabelSettings';
@@ -2564,6 +2565,14 @@ const RightSidebar = React.memo(function RightSidebar({
               layer={selectedLayer}
               onLayerUpdate={handleLayerUpdate}
               allLayers={allLayers}
+            />
+
+            <LightboxSettings
+              layer={selectedLayer}
+              onLayerUpdate={handleLayerUpdate}
+              fieldGroups={fieldGroups}
+              allFields={fields}
+              collections={collections}
             />
 
             <LabelSettings

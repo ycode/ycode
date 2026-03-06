@@ -31,7 +31,7 @@ import { slidePrev, slideNext } from '@/hooks/use-canvas-slider';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { usePagesStore } from '@/stores/usePagesStore';
 
-import type { Layer, SliderSettings as SliderSettingsType, SliderAnimationEffect, SliderLoopMode, SliderPaginationType } from '@/types';
+import type { Layer, SliderSettings as SliderSettingsType, SwiperAnimationEffect, SliderLoopMode, SliderPaginationType } from '@/types';
 
 interface SliderSettingsProps {
   layer: Layer | null;
@@ -39,13 +39,13 @@ interface SliderSettingsProps {
   allLayers: Layer[];
 }
 
-const ANIMATION_EFFECTS: { label: string; value: SliderAnimationEffect }[] = [
-  { label: 'Slide', value: 'Slide' },
-  { label: 'Fade', value: 'Fade' },
-  { label: 'Cube', value: 'Cube' },
-  { label: 'Flip', value: 'Flip' },
-  { label: 'Coverflow', value: 'Coverflow' },
-  { label: 'Cards', value: 'Cards' },
+const ANIMATION_EFFECTS: { label: string; value: SwiperAnimationEffect }[] = [
+  { label: 'Slide', value: 'slide' },
+  { label: 'Fade', value: 'fade' },
+  { label: 'Cube', value: 'cube' },
+  { label: 'Flip', value: 'flip' },
+  { label: 'Coverflow', value: 'coverflow' },
+  { label: 'Cards', value: 'cards' },
 ];
 
 const EASING_OPTIONS: { label: string; value: string; icon: 'ease-linear' | 'ease-in' | 'ease-in-out' | 'ease-out' }[] = [
@@ -160,7 +160,7 @@ export default function SliderSettings({ layer, onLayerUpdate, allLayers }: Slid
             <Select
               value={settings.animationEffect}
               onValueChange={(v) => {
-                const effect = v as SliderAnimationEffect;
+                const effect = v as SwiperAnimationEffect;
                 if (!EFFECTS_WITH_PER_VIEW.has(effect)) {
                   updateSettings({ animationEffect: effect, groupSlide: 1, slidesPerGroup: 1 });
                 } else {

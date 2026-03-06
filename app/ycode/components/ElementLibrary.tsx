@@ -158,7 +158,7 @@ const elementCategories: Record<string, string[]> = {
   Actions: ['button'],
   Media: ['image', 'icon', 'video', 'audio'],
   Form: ['form', 'input', 'textarea', 'select', 'checkbox', 'radio', 'label', 'filter'],
-  Utilities: ['slider', 'localeSelector', 'htmlEmbed'],
+  Utilities: ['slider', 'lightbox', 'localeSelector', 'htmlEmbed'],
 };
 
 /**

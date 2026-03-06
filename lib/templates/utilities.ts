@@ -2,7 +2,7 @@
  * Utility Elements Templates
  */
 
-import { BlockTemplate, SliderSettings, Layer } from '@/types';
+import { BlockTemplate, SliderSettings, LightboxSettings, Layer } from '@/types';
 import { getTemplateRef, getLayerFromTemplate } from './blocks';
 
 /** Default slider settings applied when creating a new slider */
@@ -22,7 +22,25 @@ export const DEFAULT_SLIDER_SETTINGS: SliderSettings = {
   autoplay: false,
   pauseOnHover: true,
   delay: '3',
-  animationEffect: 'Slide',
+  animationEffect: 'slide',
+  easing: 'ease-in-out',
+  duration: '0.5',
+};
+
+/** Default lightbox settings applied when creating a new lightbox */
+export const DEFAULT_LIGHTBOX_SETTINGS: LightboxSettings = {
+  files: [],
+  filesSource: 'files',
+  filesField: null,
+  thumbnails: true,
+  navigation: true,
+  pagination: true,
+  zoom: false,
+  doubleTapZoom: false,
+  mousewheel: false,
+  overlay: 'light',
+  groupId: '',
+  animationEffect: 'slide',
   easing: 'ease-in-out',
   duration: '0.5',
 };
@@ -134,12 +152,23 @@ export const utilityTemplates: Record<string, BlockTemplate> = {
   },
 
   lightbox: {
-    icon: 'block',
+    icon: 'lightbox',
     name: 'Lightbox',
     template: {
       name: 'lightbox',
-      classes: ['w-full', 'h-full'],
-      children: [],
+      customName: 'Lightbox',
+      classes: ['flex', 'flex-col', 'cursor-pointer'],
+      settings: {
+        tag: 'div',
+        lightbox: { ...DEFAULT_LIGHTBOX_SETTINGS },
+      },
+      design: {
+        layout: { isActive: true, display: 'Flex', flexDirection: 'column' },
+      },
+      open: true,
+      children: [
+        getTemplateRef('image'),
+      ],
     },
   },
 

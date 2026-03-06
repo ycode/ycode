@@ -494,15 +494,20 @@ export async function getItemsWithValues(
   filters?: QueryFilters
 ): Promise<{ items: CollectionItemWithValues[], total: number }> {
   const { items, total } = await getItemsByCollectionId(collection_id, is_published, filters);
-  // Get all items with values in parallel
-  // Values use the same is_published status as items
-  const itemsWithValues = await Promise.all(
-    items.map(item => getItemWithValues(item.id, is_published))
-  );
 
-  const filteredItems = itemsWithValues.filter((item): item is CollectionItemWithValues => item !== null);
+  if (items.length === 0) {
+    return { items: [], total };
+  }
 
-  return { items: filteredItems, total };
+  const itemIds = items.map(item => item.id);
+  const valuesByItem = await getValuesByItemIds(itemIds, is_published);
+
+  const itemsWithValues: CollectionItemWithValues[] = items.map(item => ({
+    ...item,
+    values: valuesByItem[item.id] || {},
+  }));
+
+  return { items: itemsWithValues, total };
 }
 
 /**

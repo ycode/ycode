@@ -502,6 +502,15 @@ export function collectLayerAssetIds(
     const linkAssetId = layer.variables?.link?.asset?.id;
     if (linkAssetId) assetIds.add(linkAssetId);
 
+    // Lightbox file assets
+    if (layer.settings?.lightbox?.files) {
+      for (const fileId of layer.settings.lightbox.files) {
+        if (fileId && !fileId.startsWith('http') && !fileId.startsWith('/')) {
+          assetIds.add(fileId);
+        }
+      }
+    }
+
     // Rich-text content: scan for asset links and embedded component assets
     const textVar = layer.variables?.text;
     if (textVar && 'data' in textVar && (textVar as any).data?.content) {

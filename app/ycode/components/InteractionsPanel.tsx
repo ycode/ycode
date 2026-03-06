@@ -1285,13 +1285,13 @@ export default function InteractionsPanel({
                 {/* Start Position - values read directly from layer data */}
                 <div className="grid grid-cols-3 items-center">
                   <div className="flex items-center gap-1.5">
+                    <Label variant="muted">Start</Label>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Icon name="info" className="size-3 opacity-70" />
                       </TooltipTrigger>
                       <TooltipContent align="start">Position of: Trigger layer / Viewport</TooltipContent>
                     </Tooltip>
-                    <Label variant="muted">Start</Label>
                   </div>
                   <div className="col-span-2 grid grid-cols-2 gap-1.5">
                     <Select
@@ -1354,13 +1354,13 @@ export default function InteractionsPanel({
                     {/* End Position - values read directly from layer data */}
                     <div className="grid grid-cols-3 items-center">
                       <div className="flex items-center gap-1.5">
+                        <Label variant="muted">End</Label>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Icon name="info" className="size-3 opacity-70" />
                           </TooltipTrigger>
                           <TooltipContent align="start">Position of: Trigger layer / Viewport</TooltipContent>
                         </Tooltip>
-                        <Label variant="muted">End</Label>
                       </div>
                       <div className="col-span-2 grid grid-cols-2 gap-1.5">
                         <Select
@@ -1465,13 +1465,13 @@ export default function InteractionsPanel({
                       <div className="grid grid-cols-2 gap-2">
                         <div className="flex flex-col gap-1.5">
                           <div className="flex items-center gap-1.5">
+                            <Label variant="muted">On trigger</Label>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Icon name="info" className="size-3 opacity-70" />
                               </TooltipTrigger>
                               <TooltipContent align="start">When triggered by scrolling down</TooltipContent>
                             </Tooltip>
-                            <Label variant="muted">On trigger</Label>
                           </div>
                           <Select
                             value={onEnter}
@@ -1492,13 +1492,13 @@ export default function InteractionsPanel({
 
                         <div className="flex flex-col gap-1.5">
                           <div className="flex items-center gap-1.5">
+                            <Label variant="muted">On re-trigger</Label>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Icon name="info" className="size-3 opacity-70" />
                               </TooltipTrigger>
                               <TooltipContent align="start">When triggered by scrolling up</TooltipContent>
                             </Tooltip>
-                            <Label variant="muted">On re-trigger</Label>
                           </div>
                           <Select
                             value={onLeaveBack}
@@ -1522,13 +1522,13 @@ export default function InteractionsPanel({
                       <div className="grid grid-cols-2 gap-2">
                         <div className="flex flex-col gap-1.5">
                           <div className="flex items-center gap-1.5">
+                            <Label variant="muted">On VP leave</Label>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Icon name="info" className="size-3 opacity-70" />
                               </TooltipTrigger>
                               <TooltipContent align="start">Trigger leaves the ViewPort (top side)</TooltipContent>
                             </Tooltip>
-                            <Label variant="muted">On VP leave</Label>
                           </div>
                           <Select
                             value={onLeave}
@@ -1549,13 +1549,13 @@ export default function InteractionsPanel({
 
                         <div className="flex flex-col gap-1.5">
                           <div className="flex items-center gap-1.5">
+                            <Label variant="muted">On VP re-enter</Label>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Icon name="info" className="size-3 opacity-70" />
                               </TooltipTrigger>
                               <TooltipContent align="start">Trigger re-enters the ViewPort (top side)</TooltipContent>
                             </Tooltip>
-                            <Label variant="muted">On VP re-enter</Label>
                           </div>
                           <Select
                             value={onEnterBack}
@@ -1923,13 +1923,13 @@ export default function InteractionsPanel({
 
                 <div className="grid grid-cols-3 items-center">
                   <div className="flex items-center gap-1.5">
+                    <Label variant="muted">Stagger</Label>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Icon name="info" className="size-3 opacity-70" />
                       </TooltipTrigger>
                       <TooltipContent align="start">Total time between all elements</TooltipContent>
                     </Tooltip>
-                    <Label variant="muted">Stagger</Label>
                   </div>
 
                   <div className="col-span-2">

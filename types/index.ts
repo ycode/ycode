@@ -153,9 +153,28 @@ export interface FormSettings {
   };
 }
 
-export type SliderAnimationEffect = 'Slide' | 'Fade' | 'Cube' | 'Flip' | 'Coverflow' | 'Cards';
+export type SwiperAnimationEffect = 'slide' | 'fade' | 'cube' | 'flip' | 'coverflow' | 'cards';
 export type SliderLoopMode = 'none' | 'loop' | 'rewind';
 export type SliderPaginationType = 'bullets' | 'fraction';
+export type LightboxOverlay = 'light' | 'dark';
+export type LightboxFilesSource = 'files' | 'cms';
+
+export interface LightboxSettings {
+  files: string[]; // Asset IDs or external URLs (used when filesSource is 'files')
+  filesSource: LightboxFilesSource; // Whether files come from manual selection or a CMS field
+  filesField?: FieldVariable | null; // CMS field binding for dynamic images (used when filesSource is 'cms')
+  thumbnails: boolean;
+  navigation: boolean;
+  pagination: boolean;
+  zoom: boolean; // Pinch-to-zoom on touch devices
+  doubleTapZoom: boolean; // Double-tap/click to zoom
+  mousewheel: boolean; // Navigate slides with scroll wheel
+  overlay: LightboxOverlay;
+  groupId: string; // Links multiple lightboxes into one shared gallery
+  animationEffect: SwiperAnimationEffect;
+  easing: string;
+  duration: string; // Transition duration in seconds
+}
 
 export interface SliderSettings {
   navigation: boolean;
@@ -173,7 +192,7 @@ export interface SliderSettings {
   autoplay: boolean;
   pauseOnHover: boolean;
   delay: string; // Autoplay delay in seconds
-  animationEffect: SliderAnimationEffect;
+  animationEffect: SwiperAnimationEffect;
   easing: string;
   duration: string; // Transition duration in seconds
 }
@@ -190,6 +209,7 @@ export interface LayerSettings {
     code?: string; // Custom HTML code to embed
   };
   slider?: SliderSettings; // Slider-specific settings (only for slider layers)
+  lightbox?: LightboxSettings; // Lightbox-specific settings (only for lightbox layers)
   form?: FormSettings; // Form-specific settings (only for form layers)
   filterOnChange?: boolean; // For filter layers: trigger filtering on every input change (debounced)
   optionsSource?: {

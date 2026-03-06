@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { buildSlugPath, buildDynamicPageUrl, buildLocalizedSlugPath, buildLocalizedDynamicPageUrl, detectLocaleFromPath, matchPageWithTranslatedSlugs, matchDynamicPageWithTranslatedSlugs } from '@/lib/page-utils';
 import { getItemWithValues, getItemsWithValues } from '@/lib/repositories/collectionItemRepository';
@@ -243,7 +244,7 @@ async function getCollectionItemBySlug(
  * @param isPublished - Whether to fetch published or draft version
  * @param paginationContext - Optional pagination context with page numbers from URL
  */
-export async function fetchPageByPath(
+export const fetchPageByPath = cache(async function fetchPageByPath(
   slugPath: string,
   isPublished: boolean,
   paginationContext?: PaginationContext,
@@ -284,25 +285,16 @@ export async function fetchPageByPath(
       translations = trans;
     }
 
-    // Get all pages and folders to match the full path
-    const { data: pages } = await supabase
-      .from('pages')
-      .select('*')
-      .eq('is_published', isPublished)
-      .is('deleted_at', null);
-
-    const { data: folders } = await supabase
-      .from('page_folders')
-      .select('*')
-      .eq('is_published', isPublished)
-      .is('deleted_at', null);
+    // Fetch pages, folders, and components in parallel
+    const [{ data: pages }, { data: folders }, components] = await Promise.all([
+      supabase.from('pages').select('*').eq('is_published', isPublished).is('deleted_at', null),
+      supabase.from('page_folders').select('*').eq('is_published', isPublished).is('deleted_at', null),
+      fetchComponents(supabase, isPublished),
+    ]);
 
     if (!pages || !folders) {
       return null;
     }
-
-    // Fetch all components once at the start
-    const components = await fetchComponents(supabase, isPublished);
 
     const targetPath = pathWithoutLocale;
 
@@ -546,7 +538,7 @@ export async function fetchPageByPath(
     console.error('Failed to fetch page:', error);
     return null;
   }
-}
+});
 
 /**
  * Fetch error page by error code (404, 401, 500)
@@ -643,7 +635,7 @@ export async function fetchErrorPage(
  * @param paginationContext - Optional pagination context with page numbers from URL
  * @param preloadedComponents - Optional pre-fetched components to avoid redundant queries
  */
-export async function fetchHomepage(
+export const fetchHomepage = cache(async function fetchHomepage(
   isPublished: boolean,
   paginationContext?: PaginationContext,
   preloadedComponents?: Component[],
@@ -656,29 +648,24 @@ export async function fetchHomepage(
       return null;
     }
 
-    // Get all active locales from the database
-    const { data: availableLocales } = await supabase
-      .from('locales')
-      .select('*')
-      .eq('is_published', isPublished)
-      .is('deleted_at', null);
-
-    // Get the homepage
-    const { data: homepage } = await supabase
-      .from('pages')
-      .select('*')
-      .eq('is_index', true)
-      .is('page_folder_id', null)
-      .eq('is_published', isPublished)
-      .is('deleted_at', null)
-      .limit(1)
-      .single();
+    // Fetch locales, homepage, and components in parallel
+    const [
+      { data: availableLocales },
+      { data: homepage },
+      componentsResult,
+    ] = await Promise.all([
+      supabase.from('locales').select('*').eq('is_published', isPublished).is('deleted_at', null),
+      supabase.from('pages').select('*').eq('is_index', true).is('page_folder_id', null).eq('is_published', isPublished).is('deleted_at', null).limit(1).single(),
+      preloadedComponents ? Promise.resolve(preloadedComponents) : fetchComponents(supabase, isPublished),
+    ]);
 
     if (!homepage) {
       return null;
     }
 
-    // Get layers for homepage
+    const components = componentsResult;
+
+    // Get layers for homepage (depends on homepage.id)
     const { data: pageLayers, error: layersError } = await supabase
       .from('page_layers')
       .select('*')
@@ -692,9 +679,6 @@ export async function fetchHomepage(
     if (layersError) {
       return null;
     }
-
-    // Use preloaded components if available, otherwise fetch them
-    const components = preloadedComponents || await fetchComponents(supabase, isPublished);
 
     // First, resolve components so collection layers inside components are available
     const layersWithComponents = resolveComponents(pageLayers?.layers || [], components);
@@ -725,7 +709,7 @@ export async function fetchHomepage(
   } catch (error) {
     return null;
   }
-}
+});
 
 /**
  * Inject translated text and assets into layers recursively
@@ -1118,6 +1102,32 @@ async function injectCollectionData(
         src: createResolvedAssetVariable(bgImageSrc.data.field_id, resolvedValue, bgImageSrc),
       },
     };
+  }
+
+  // Lightbox CMS field binding — resolve filesField to concrete asset IDs/URLs
+  const lightboxSettings = layer.settings?.lightbox;
+  if (lightboxSettings?.filesSource === 'cms' && lightboxSettings.filesField && isFieldVariable(lightboxSettings.filesField)) {
+    const resolvedValue = resolveFieldValueWithRelationships(lightboxSettings.filesField, enhancedValues, layerDataMap);
+    if (resolvedValue) {
+      // The value can be a single asset ID, a comma-separated list, or a JSON array
+      let resolvedFiles: string[];
+      try {
+        const parsed = JSON.parse(resolvedValue);
+        resolvedFiles = Array.isArray(parsed) ? parsed : [resolvedValue];
+      } catch {
+        resolvedFiles = resolvedValue.includes(',')
+          ? resolvedValue.split(',').map(s => s.trim()).filter(Boolean)
+          : [resolvedValue];
+      }
+      updates.settings = {
+        ...layer.settings,
+        ...updates.settings,
+        lightbox: {
+          ...lightboxSettings,
+          files: resolvedFiles,
+        },
+      };
+    }
   }
 
   // Design color field bindings → inline styles (supports solid + gradient)
@@ -1740,7 +1750,6 @@ export async function resolveCollectionLayers(
 
           // Find slug field for building collection item URLs
           const slugField = collectionFields.find(f => f.key === 'slug');
-
           // Clone the collection layer for each item (design settings apply to each repeated item)
           // For each item, resolve nested collection layers with that item's values
           // Note: Pagination is now a sibling layer, not a child, so no filtering needed
@@ -3025,6 +3034,31 @@ function layerToHtml(
   if (layer.name === 'slider' && layer.settings?.slider) {
     attrs.push(`data-slider-id="${escapeHtml(layer.id)}"`);
     attrs.push(`data-slider-settings="${escapeHtml(JSON.stringify(layer.settings.slider))}"`);
+  }
+
+  // Add lightbox data attributes for the lightbox layer
+  if (layer.name === 'lightbox' && layer.settings?.lightbox) {
+    const lbSettings = layer.settings.lightbox;
+    const triggerId = lbSettings.groupId || layer.id;
+    attrs.push(`data-lightbox-id="${escapeHtml(triggerId)}"`);
+    // Strip builder-only fields from serialized settings
+    const { filesField: _ff, filesSource: _fs, ...runtimeSettings } = lbSettings;
+    attrs.push(`data-lightbox-settings="${escapeHtml(JSON.stringify(runtimeSettings))}"`);
+    // Resolve lightbox file asset IDs to URLs
+    const resolvedFiles = lbSettings.files
+      .map((fileId: string) => {
+        if (fileId.startsWith('http') || fileId.startsWith('/')) return fileId;
+        const asset = assetMap?.[fileId];
+        return asset?.public_url ?? null;
+      })
+      .filter(Boolean) as string[];
+    if (resolvedFiles.length) {
+      attrs.push(`data-lightbox-files="${escapeHtml(resolvedFiles.join(','))}"`);
+    }
+    // For grouped lightboxes, set which image to open to
+    if (lbSettings.groupId && resolvedFiles.length > 0) {
+      attrs.push(`data-lightbox-open-to="${escapeHtml(resolvedFiles[0])}"`);
+    }
   }
 
   // Render filter-dependent conditional visibility data attributes

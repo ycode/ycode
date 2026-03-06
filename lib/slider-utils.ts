@@ -15,19 +15,19 @@ import {
   EffectCards,
 } from 'swiper/modules';
 import type { SwiperOptions } from 'swiper/types';
-import type { SliderSettings, SliderAnimationEffect } from '@/types';
+import type { SliderSettings, SwiperAnimationEffect } from '@/types';
 
 /** Effect name → Swiper module mapping */
-export const EFFECT_MODULES: Record<string, typeof EffectFade> = {
-  Fade: EffectFade,
-  Cube: EffectCube,
-  Flip: EffectFlip,
-  Coverflow: EffectCoverflow,
-  Cards: EffectCards,
+export const EFFECT_MODULES: Partial<Record<SwiperAnimationEffect, typeof EffectFade>> = {
+  fade: EffectFade,
+  cube: EffectCube,
+  flip: EffectFlip,
+  coverflow: EffectCoverflow,
+  cards: EffectCards,
 };
 
 /** Effects that support slidesPerView > 1 */
-export const EFFECTS_WITH_PER_VIEW = new Set<SliderAnimationEffect>(['Slide', 'Coverflow']);
+export const EFFECTS_WITH_PER_VIEW = new Set<SwiperAnimationEffect>(['slide', 'coverflow']);
 
 /** All Swiper modules needed for production (canvas uses a subset) */
 export const ALL_SWIPER_MODULES = [Navigation, Pagination, Autoplay, Mousewheel];
@@ -39,9 +39,9 @@ export const ALL_SWIPER_MODULES = [Navigation, Pagination, Autoplay, Mousewheel]
 export function buildBaseSwiperOptions(settings: SliderSettings): SwiperOptions {
   const modules = [...ALL_SWIPER_MODULES];
   const effectKey = settings.animationEffect;
-  const hasEffect = effectKey in EFFECT_MODULES;
+  const effectModule = EFFECT_MODULES[effectKey];
 
-  if (hasEffect) modules.push(EFFECT_MODULES[effectKey]);
+  if (effectModule) modules.push(effectModule);
 
   const config: SwiperOptions = {
     modules,
@@ -51,8 +51,8 @@ export function buildBaseSwiperOptions(settings: SliderSettings): SwiperOptions 
     speed: Math.round(parseFloat(settings.duration || '0.5') * 1000),
   };
 
-  if (hasEffect) {
-    config.effect = effectKey.toLowerCase() as SwiperOptions['effect'];
+  if (effectModule) {
+    config.effect = effectKey as SwiperOptions['effect'];
   }
 
   if (settings.loop === 'loop') {
