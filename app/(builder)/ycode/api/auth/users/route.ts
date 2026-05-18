@@ -49,6 +49,12 @@ export async function GET(request: NextRequest) {
     }> = [];
 
     for (const user of data.users) {
+      // Check for the admin role - only admins/editors should be in this list
+      const role = user.app_metadata?.role;
+      if (role !== 'admin') {
+        continue;
+      }
+
       // Get metadata - check both user_metadata and raw_user_meta_data
        
       const userAny = user as any;

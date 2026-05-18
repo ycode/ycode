@@ -603,7 +603,26 @@ async function publishItemValuesBatch(itemIds: string[]): Promise<number> {
     allPublishedValues.flat().map(v => [v.id, v.value])
   );
 
-  // Only upsert values that are new or changed
+  // 1. Identify and delete orphaned values on the published side
+  // These are values that exist in published but NOT in draft for the items we are publishing
+  const draftValueIds = new Set(draftValues.map(v => v.id));
+  const orphanedValueIds = allPublishedValues.flat()
+    .filter(v => !draftValueIds.has(v.id))
+    .map(v => v.id);
+
+  if (orphanedValueIds.length > 0) {
+    const { error: deleteError } = await client
+      .from('collection_item_values')
+      .delete()
+      .in('id', orphanedValueIds)
+      .eq('is_published', true);
+
+    if (deleteError) {
+      console.error('Failed to cleanup orphaned published values:', deleteError.message);
+    }
+  }
+
+  // 2. Only upsert values that are new or changed
   const now = new Date().toISOString();
   const valuesToUpsert: Array<{
     id: string;

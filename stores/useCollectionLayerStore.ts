@@ -15,7 +15,7 @@ interface CollectionLayerState {
   layerData: Record<string, CollectionItemWithValues[]>; // keyed by layerId
   loading: Record<string, boolean>; // loading state per layer
   error: Record<string, string | null>; // error state per layer
-  layerConfig: Record<string, { collectionId: string; sortBy?: string; sortOrder?: 'asc' | 'desc'; limit?: number; offset?: number; filters?: Array<{ fieldId: string; operator: string; value: string }> }>; // Track config per layer
+  layerConfig: Record<string, { collectionId: string; sortBy?: string; sortOrder?: 'asc' | 'desc'; limit?: number; offset?: number; filters?: Array<{ fieldId: string; operator: string; value: string }>; userScope?: boolean; userScopeFieldId?: string; previewUserId?: string | null }>; // Track config per layer
   referencedItems: Record<string, CollectionItemWithValues[]>; // Items for referenced collections, keyed by collectionId
   referencedLoading: Record<string, boolean>; // Loading state for referenced collections
   // Pagination state
@@ -33,7 +33,10 @@ interface CollectionLayerActions {
     sortOrder?: 'asc' | 'desc',
     limit?: number,
     offset?: number,
-    filters?: Array<{ fieldId: string; operator: string; value: string }>
+    filters?: Array<{ fieldId: string; operator: string; value: string }>,
+    userScope?: boolean,
+    userScopeFieldId?: string,
+    previewUserIdArg?: string | null
   ) => Promise<void>;
   fetchReferencedCollectionItems: (collectionId: string) => Promise<void>;
   fetchReferencedCollectionsBatch: (collectionIds: string[]) => Promise<void>;
@@ -145,13 +148,23 @@ export const useCollectionLayerStore = create<CollectionLayerStore>((set, get) =
     sortOrder: 'asc' | 'desc' = 'asc',
     limit?: number,
     offset?: number,
-    filters?: Array<{ fieldId: string; operator: string; value: string }>
+    filters?: Array<{ fieldId: string; operator: string; value: string }>,
+    userScope?: boolean,
+    userScopeFieldId?: string,
+    previewUserIdArg?: string | null
   ) => {
     const { loading, layerConfig } = get();
 
     // Skip for virtual collections (multi-asset)
     if (collectionId === MULTI_ASSET_COLLECTION_ID) {
       return;
+    }
+
+    // Resolve previewUserId from store if not provided (needed for reactive updates from CenterCanvas)
+    let previewUserId = previewUserIdArg;
+    if (previewUserId === undefined && typeof window !== 'undefined') {
+      const { usePagesStore } = await import('@/stores/usePagesStore');
+      previewUserId = usePagesStore.getState().previewUserId;
     }
 
     // Skip if already loading
@@ -170,6 +183,9 @@ export const useCollectionLayerStore = create<CollectionLayerStore>((set, get) =
       existingConfig.sortOrder === sortOrder &&
       existingConfig.limit === limit &&
       existingConfig.offset === offset &&
+      existingConfig.userScope === userScope &&
+      existingConfig.userScopeFieldId === userScopeFieldId &&
+      existingConfig.previewUserId === previewUserId &&
       filtersMatch;
 
     // Skip if config matches — prevents refetching when a collection legitimately
@@ -192,6 +208,8 @@ export const useCollectionLayerStore = create<CollectionLayerStore>((set, get) =
         limit,
         offset,
         filters,
+        userScope,
+        userScopeFieldId,
       });
 
       if (response.error) {
@@ -206,7 +224,7 @@ export const useCollectionLayerStore = create<CollectionLayerStore>((set, get) =
         loading: { ...state.loading, [layerId]: false },
         layerConfig: {
           ...state.layerConfig,
-          [layerId]: { collectionId, sortBy, sortOrder, limit, offset, filters }
+          [layerId]: { collectionId, sortBy, sortOrder, limit, offset, filters, userScope, userScopeFieldId, previewUserId }
         },
       }));
     } catch (error) {
@@ -240,69 +258,81 @@ export const useCollectionLayerStore = create<CollectionLayerStore>((set, get) =
       layerData: {},
       loading: {},
       error: {},
-      referencedItems: {},
-      referencedLoading: {},
+      layerConfig: {},
     });
   },
 
-  // Optimistically update an item across all layer data
-  updateItemInLayerData: (itemId, values) => {
+  // Update a single item in the local cache
+  updateItemInLayerData: (itemId: string, values: Record<string, string>) => {
     set((state) => {
       const newLayerData = { ...state.layerData };
+      let changed = false;
 
-      // Update the item in all layers that have it
-      Object.keys(newLayerData).forEach(layerId => {
-        newLayerData[layerId] = newLayerData[layerId].map(item => {
-          if (item.id === itemId) {
-            return { ...item, values };
-          }
-          return item;
-        });
+      Object.keys(newLayerData).forEach((layerId) => {
+        const items = newLayerData[layerId];
+        const itemIndex = items.findIndex((item) => item.id === itemId);
+
+        if (itemIndex !== -1) {
+          const updatedItems = [...items];
+          updatedItems[itemIndex] = {
+            ...updatedItems[itemIndex],
+            values: {
+              ...updatedItems[itemIndex].values,
+              ...values,
+            },
+          };
+          newLayerData[layerId] = updatedItems;
+          changed = true;
+        }
       });
 
+      if (!changed) return state;
       return { layerData: newLayerData };
     });
   },
 
-  // Invalidate cached layer data for a specific collection so the next fetchLayerData call bypasses the config-match check.
-  // Also clears referenced items cache since reference fields may point to this collection.
+  // Invalidate all layers bound to a specific collection
   invalidateLayerData: (collectionId: string) => {
-    const { layerConfig, referencedItems } = get();
-    const updatedConfig = { ...layerConfig };
-    for (const [layerId, config] of Object.entries(updatedConfig)) {
-      if (config.collectionId === collectionId) {
-        delete updatedConfig[layerId];
-      }
-    }
-    const updatedReferenced = { ...referencedItems };
-    delete updatedReferenced[collectionId];
-    set({
-      layerConfig: updatedConfig,
-      referencedItems: updatedReferenced,
-      invalidationKey: get().invalidationKey + 1,
+    set((state) => {
+      const newLayerConfig = { ...state.layerConfig };
+      let changed = false;
+
+      Object.keys(newLayerConfig).forEach((layerId) => {
+        if (newLayerConfig[layerId].collectionId === collectionId) {
+          // Remove the config to force a re-fetch on next render
+          delete newLayerConfig[layerId];
+          changed = true;
+        }
+      });
+
+      if (!changed) return state;
+      return {
+        layerConfig: newLayerConfig,
+        invalidationKey: state.invalidationKey + 1,
+      };
     });
   },
 
-  // Refetch all layers that use a specific collection
-  refetchLayersForCollection: async (collectionId) => {
+  // Silently re-fetch all layers for a collection (after CMS update)
+  refetchLayersForCollection: async (collectionId: string) => {
     const { layerConfig } = get();
+    const relevantLayers = Object.entries(layerConfig).filter(
+      ([, config]) => config.collectionId === collectionId
+    );
 
-    // Find all layers that use this collection
-    const layersToRefetch = Object.entries(layerConfig)
-      .filter(([_, config]) => config.collectionId === collectionId)
-      .map(([layerId]) => layerId);
+    if (relevantLayers.length === 0) return;
 
-    // Refetch each layer without showing loading state
-    for (const layerId of layersToRefetch) {
-      const config = layerConfig[layerId];
-      if (config) {
-        try {
+    try {
+      await Promise.all(
+        relevantLayers.map(async ([layerId, config]) => {
           const response = await collectionsApi.getItems(config.collectionId, {
             sortBy: config.sortBy,
             sortOrder: config.sortOrder,
             limit: config.limit,
             offset: config.offset,
             filters: config.filters,
+            userScope: config.userScope,
+            userScopeFieldId: config.userScopeFieldId,
           });
 
           if (!response.error && response.data?.items) {
@@ -311,44 +341,34 @@ export const useCollectionLayerStore = create<CollectionLayerStore>((set, get) =
               layerData: { ...state.layerData, [layerId]: response.data!.items },
             }));
           }
-        } catch (error) {
-          console.error(`[CollectionLayerStore] Error refetching layer ${layerId}:`, error);
-        }
-      }
+        })
+      );
+    } catch (error) {
+      console.error(`[CollectionLayerStore] Error re-fetching layers for collection ${collectionId}:`, error);
     }
   },
 
-  // Set pagination meta for a layer
-  setPaginationMeta: (layerId, meta) => {
-    set((state) => ({
-      paginationMeta: { ...state.paginationMeta, [layerId]: meta },
-    }));
-  },
-
-  // Fetch a specific page for a layer with pagination
-  fetchPage: async (layerId, page) => {
-    const { paginationMeta, layerConfig } = get();
-    const meta = paginationMeta[layerId];
+  // Pagination: Fetch a specific page for a layer
+  fetchPage: async (layerId: string, page: number) => {
+    const { layerConfig, paginationMeta } = get();
     const config = layerConfig[layerId];
+    const meta = paginationMeta[layerId];
 
-    if (!meta || !config) {
-      console.warn(`[CollectionLayerStore] Cannot fetch page for layer ${layerId}: missing meta or config`);
-      return null;
-    }
+    if (!config || !meta) return null;
 
-    // Set loading state
     set((state) => ({
       paginationLoading: { ...state.paginationLoading, [layerId]: true },
     }));
 
     try {
       const offset = (page - 1) * meta.itemsPerPage;
-
       const response = await collectionsApi.getItems(config.collectionId, {
         sortBy: config.sortBy,
         sortOrder: config.sortOrder,
         limit: meta.itemsPerPage,
         offset,
+        userScope: config.userScope,
+        userScopeFieldId: config.userScopeFieldId,
       });
 
       if (response.error) {
@@ -358,17 +378,14 @@ export const useCollectionLayerStore = create<CollectionLayerStore>((set, get) =
       const items = response.data?.items || [];
       const total = response.data?.total || 0;
 
-      // Build new pagination meta
-      const newMeta: CollectionPaginationMeta = {
+      const newMeta = {
         ...meta,
         currentPage: page,
         totalItems: total,
         totalPages: Math.ceil(total / meta.itemsPerPage),
       };
 
-      // Update store
       set((state) => ({
-        layerData: { ...state.layerData, [layerId]: items },
         paginationMeta: { ...state.paginationMeta, [layerId]: newMeta },
         paginationLoading: { ...state.paginationLoading, [layerId]: false },
       }));
@@ -381,5 +398,11 @@ export const useCollectionLayerStore = create<CollectionLayerStore>((set, get) =
       }));
       return null;
     }
+  },
+
+  setPaginationMeta: (layerId: string, meta: CollectionPaginationMeta) => {
+    set((state) => ({
+      paginationMeta: { ...state.paginationMeta, [layerId]: meta },
+    }));
   },
 }));

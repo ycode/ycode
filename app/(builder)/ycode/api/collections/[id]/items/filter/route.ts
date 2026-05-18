@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-server';
+import { getSiteUser } from '@/lib/supabase-auth';
 import { getItemsByCollectionId } from '@/lib/repositories/collectionItemRepository';
 import { getValuesByItemIds } from '@/lib/repositories/collectionItemValueRepository';
 import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepository';
@@ -418,31 +419,83 @@ async function getFilteredItemIds(
   collectionId: string,
   isPublished: boolean,
   filterGroups: FilterCondition[][],
+  userScope?: boolean,
+  userScopeFieldId?: string,
 ): Promise<{ matchingIds: string[]; total: number }> {
   const client = await getSupabaseAdmin();
   if (!client) throw new Error('Supabase client not configured');
 
-  const allItemIds = await getAllItemIdsForCollection(client, collectionId, isPublished);
+  // 1. Resolve current user if needed (either for explicit 'current_user' filter or global userScope)
+  let currentUserId: string | null = null;
+  const hasExplicitUserFilter = filterGroups.some(g => g.some(c => c.value === 'current_user' || c.value2 === 'current_user'));
+  
+  if (userScope || hasExplicitUserFilter) {
+    const siteAuth = await getSiteUser();
+    currentUserId = siteAuth?.user?.id || null;
+  }
 
+  // 2. Fetch all base item IDs for the collection
+  const allItemIds = await getAllItemIdsForCollection(client, collectionId, isPublished);
+  if (allItemIds.length === 0) return { matchingIds: [], total: 0 };
+
+  let baseIds = new Set(allItemIds);
+
+  // 3. Apply Global User Scope if enabled
+  if (userScope) {
+    let targetFieldId = userScopeFieldId;
+    
+    // If no specific field ID provided, look for 'supabase_user_id' key in this collection
+    if (!targetFieldId) {
+      const fields = await getFieldsByCollectionId(collectionId, isPublished);
+      const userField = fields.find(f => f.key === 'supabase_user_id');
+      if (userField) targetFieldId = userField.id;
+    }
+
+    if (targetFieldId) {
+      const userFilter: FilterCondition = {
+        fieldId: targetFieldId,
+        operator: 'is',
+        value: currentUserId || 'guest', // 'guest' ensures no matches if logged out
+      };
+      const matchingForUser = await getIdsMatchingFilter(client, userFilter, isPublished, [...baseIds]);
+      baseIds = new Set([...baseIds].filter(id => matchingForUser.has(id)));
+    }
+    
+    if (baseIds.size === 0) return { matchingIds: [], total: 0 };
+  }
+
+  // 4. Apply standard filter groups (if any)
   if (filterGroups.length === 0) {
-    return { matchingIds: allItemIds, total: allItemIds.length };
+    const matchingIds = Array.from(baseIds);
+    return { matchingIds, total: matchingIds.length };
   }
 
   // Each group's conditions are ANDed. Groups are ORed (union).
   const groupResults: Set<string>[] = [];
 
   for (const group of filterGroups) {
-    let currentIds = new Set(allItemIds);
+    let currentIds = new Set(baseIds);
 
-    for (let filter of group) {
+    for (const filter of group) {
       if (currentIds.size === 0) break;
-      if (isDateFieldType(filter.fieldType) && isDatePreset(filter.value)) {
-        const resolved = resolveDateFilterValue(filter.operator, filter.value, filter.value2);
+      // Resolve "current_user" placeholder in explicit filters
+      let filterValue = filter.value;
+      let filterValue2 = filter.value2;
+      
+      if (filterValue === 'current_user') filterValue = currentUserId || 'guest';
+      if (filterValue2 === 'current_user') filterValue2 = currentUserId || 'guest';
+      
+      const resolvedFilter = { ...filter, value: filterValue, value2: filterValue2 };
+
+      if (isDateFieldType(resolvedFilter.fieldType) && isDatePreset(resolvedFilter.value)) {
+        const resolved = resolveDateFilterValue(resolvedFilter.operator, resolvedFilter.value, resolvedFilter.value2);
         if (resolved) {
-          filter = { ...filter, operator: resolved.operator, value: resolved.value, value2: resolved.value2 };
+          resolvedFilter.operator = resolved.operator;
+          resolvedFilter.value = resolved.value;
+          resolvedFilter.value2 = resolved.value2;
         }
       }
-      const matchingForFilter = await getIdsMatchingFilter(client, filter, isPublished, [...currentIds]);
+      const matchingForFilter = await getIdsMatchingFilter(client, resolvedFilter, isPublished, [...currentIds]);
       currentIds = new Set([...currentIds].filter(id => matchingForFilter.has(id)));
     }
 
@@ -522,6 +575,8 @@ export async function POST(
       layerTemplate,
       collectionLayerId,
       filterGroups = [],
+      userScope,
+      userScopeFieldId,
       sortBy,
       sortOrder = 'asc',
       limit,
@@ -543,6 +598,8 @@ export async function POST(
       collectionId,
       isPublished,
       filterGroups,
+      userScope,
+      userScopeFieldId,
     );
 
     if (matchingIds.length === 0) {

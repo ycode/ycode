@@ -1,6 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/supabase-server';
 import type { Collection, CreateCollectionData, UpdateCollectionData } from '@/types';
 import { randomUUID } from 'crypto';
+import { USERS_COLLECTION_ID, AUTH_SYSTEM_APP_ID } from '../auth-constants';
+import { getAppSettingValue } from './appSettingsRepository';
 
 /**
  * Collection Repository
@@ -249,6 +251,14 @@ export async function updateCollection(
  * @param isPublished - Which version to delete: draft (false) or published (true). Defaults to false (draft).
  */
 export async function deleteCollection(id: string, isPublished: boolean = false): Promise<void> {
+  // Prevent deletion of the system Users collection if Auth System is enabled
+  if (id === USERS_COLLECTION_ID) {
+    const authConfig = await getAppSettingValue<{ enabled: boolean }>(AUTH_SYSTEM_APP_ID, 'config');
+    if (authConfig?.enabled) {
+      throw new Error('The Users collection cannot be deleted while the Authentication System is enabled.');
+    }
+  }
+
   const client = await getSupabaseAdmin();
 
   if (!client) {
@@ -337,6 +347,14 @@ export async function deleteCollection(id: string, isPublished: boolean = false)
  * @param isPublished - Which version to delete: draft (false) or published (true). Defaults to false (draft).
  */
 export async function hardDeleteCollection(id: string, isPublished: boolean = false): Promise<void> {
+  // Prevent deletion of the system Users collection if Auth System is enabled
+  if (id === USERS_COLLECTION_ID) {
+    const authConfig = await getAppSettingValue<{ enabled: boolean }>(AUTH_SYSTEM_APP_ID, 'config');
+    if (authConfig?.enabled) {
+      throw new Error('The Users collection cannot be deleted while the Authentication System is enabled.');
+    }
+  }
+
   const client = await getSupabaseAdmin();
 
   if (!client) {

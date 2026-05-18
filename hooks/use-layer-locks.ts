@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { useCollaborationPresenceStore, getResourceLockKey } from '@/stores/useCollaborationPresenceStore';
+import { useCollaborationPresenceStore } from '@/stores/useCollaborationPresenceStore';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { useResourceLock } from './use-resource-lock';
 
@@ -30,6 +30,11 @@ export function useLayerLocks(): UseLayerLocksReturn {
   const editingComponentId = useEditorStore((state) => state.editingComponentId);
   
   const lastActivity = useRef<number>(0);
+  
+  // Set initial activity timestamp
+  useEffect(() => {
+    lastActivity.current = Date.now();
+  }, []);
   
   // Determine the channel name based on whether we're editing a component or a page
   const channelName = editingComponentId 

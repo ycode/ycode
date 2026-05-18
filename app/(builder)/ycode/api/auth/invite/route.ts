@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { noCache } from '@/lib/api-response';
+import { AUTH_ROLES } from '@/lib/auth-constants';
 
 /**
  * POST /ycode/api/auth/invite
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest) {
       redirectTo: redirectTo || undefined,
       data: {
         invited_at: new Date().toISOString(),
+        role: AUTH_ROLES.ADMIN,
       },
     });
 

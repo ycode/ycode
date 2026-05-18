@@ -31,6 +31,7 @@ import { buildSlugPath, buildDynamicPageUrl, buildLocalizedSlugPath, buildLocali
 import type { Page } from '@/types';
 import type { User } from '@supabase/supabase-js';
 import ActiveUsersInHeader from './ActiveUsersInHeader';
+import PreviewUserSelector from './PreviewUserSelector';
 import InviteUserButton from './InviteUserButton';
 import PublishPopover from './PublishPopover';
 import { Label } from '@/components/ui/label';
@@ -597,6 +598,9 @@ export default function HeaderBar({
 
       {/* Right: User & Actions */}
       <div className="flex items-center justify-end gap-2">
+        {/* Preview User Selection */}
+        <PreviewUserSelector />
+
         {/* Active Users */}
         <ActiveUsersInHeader />
 

@@ -18,6 +18,7 @@ import Icon from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
@@ -51,6 +52,7 @@ import MapSettings from './MapSettings';
 import SliderSettings from './SliderSettings';
 import LightboxSettings from './LightboxSettings';
 import InputSettings from './InputSettings';
+import AuthSettings from './AuthSettings';
 import SelectOptionsSettings from './SelectOptionsSettings';
 import LabelSettings from './LabelSettings';
 import LinkSettings, { type LinkSettingsValue } from './LinkSettings';
@@ -1258,6 +1260,21 @@ const RightSidebar = React.memo(function RightSidebar({
           ...currentCollectionVariable,
           sort_order: sortOrder,
           sort_order_inputLayerId: undefined,
+        }
+      }
+    });
+  }, [selectedLayerId, selectedLayer, handleLayerUpdate]);
+
+  const handleCollectionVariableChange = useCallback((updates: any) => {
+    if (!selectedLayerId || !selectedLayer) return;
+    const currentVariable = getCollectionVariable(selectedLayer);
+    if (!currentVariable) return;
+    handleLayerUpdate(selectedLayerId, {
+      variables: {
+        ...selectedLayer.variables,
+        collection: {
+          ...currentVariable,
+          ...updates,
         }
       }
     });
@@ -2723,6 +2740,32 @@ const RightSidebar = React.memo(function RightSidebar({
                           </div>
                       )}
 
+                      {/* Logged-in User Scope */}
+                      <div className="flex items-center justify-between py-1 mt-1 border-t border-dashed pt-2">
+                        <div className="flex flex-col gap-0.5">
+                          <Label className="text-xs font-medium cursor-pointer" htmlFor="userScope">
+                            Filter by logged-in user
+                          </Label>
+                          <p className="text-[10px] text-muted-foreground">
+                            Show only data belonging to the visitor.
+                          </p>
+                        </div>
+                        <Switch
+                          id="userScope"
+                          className="scale-75"
+                          checked={getCollectionVariable(selectedLayer)?.userScope || false}
+                          onCheckedChange={(checked) => {
+                            const cv = getCollectionVariable(selectedLayer);
+                            if (cv) {
+                              handleCollectionVariableChange({
+                                ...cv,
+                                userScope: checked,
+                              });
+                            }
+                          }}
+                        />
+                      </div>
+
                       {/* Total Limit */}
                       <div className="grid grid-cols-3">
                         <Label variant="muted">Total limit</Label>
@@ -2898,6 +2941,11 @@ const RightSidebar = React.memo(function RightSidebar({
             <InputSettings
               layer={selectedLayer}
               allLayers={allLayers}
+              onLayerUpdate={handleLayerUpdate}
+            />
+
+            <AuthSettings
+              layer={selectedLayer}
               onLayerUpdate={handleLayerUpdate}
             />
 

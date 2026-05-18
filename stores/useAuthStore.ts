@@ -57,17 +57,23 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { data: { user } } = await supabase.auth.getUser();
       const { data: { session } } = await supabase.auth.getSession();
 
+      // Only allow admins into the builder state
+      const isAdmin = user?.app_metadata?.role === 'admin';
+      const activeUser = isAdmin ? user : null;
+      const activeSession = isAdmin ? session : null;
+
       set({
-        user: user ?? null,
-        session: user ? session : null,
+        user: activeUser,
+        session: activeSession,
         initialized: true,
       });
 
       // Listen for auth changes
       supabase.auth.onAuthStateChange((_event, session) => {
+        const isAdminChange = session?.user?.app_metadata?.role === 'admin';
         set({
-          user: session?.user ?? null,
-          session,
+          user: isAdminChange ? session?.user ?? null : null,
+          session: isAdminChange ? session : null,
         });
       });
     } catch (error) {
@@ -98,9 +104,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/ycode`,
-          // Note: Email confirmation should be disabled in Supabase Dashboard
-          // (Authentication → Providers → Email → Disable "Confirm email")
-          // This is recommended for self-hosted single-admin setups
+          data: {
+            role: 'admin',
+          },
         },
       });
 

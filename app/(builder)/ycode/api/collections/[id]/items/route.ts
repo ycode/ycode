@@ -44,6 +44,8 @@ export async function GET(
     const offsetParam = searchParams.get('offset');
     const filtersParam = searchParams.get('filters');
     const includeAssets = searchParams.get('includeAssets') === 'true';
+    const userScope = searchParams.get('userScope') === 'true';
+    const userScopeFieldId = searchParams.get('userScopeFieldId');
 
     // Calculate offset (use explicit offset if provided, otherwise calculate from page)
     const offset = offsetParam ? parseInt(offsetParam, 10) : (page - 1) * limit;
@@ -76,6 +78,38 @@ export async function GET(
       fieldsById.set(field.id, field);
     }
 
+    // 1. Apply userScope filtering if requested
+    let userScopeItemIds: string[] | undefined = undefined;
+    if (userScope) {
+      const { getSiteUser } = await import('@/lib/supabase-auth');
+      const { getSupabaseAdmin } = await import('@/lib/supabase-server');
+      const siteAuth = await getSiteUser();
+      const currentUserId = siteAuth?.user?.id || 'guest';
+
+      let targetFieldId = userScopeFieldId;
+      if (!targetFieldId) {
+        const userField = allFields.find(f => f.key === 'supabase_user_id');
+        if (userField) targetFieldId = userField.id;
+      }
+
+      if (targetFieldId) {
+        const client = await getSupabaseAdmin();
+        if (client) {
+          const { data } = await client
+            .from('collection_item_values')
+            .select('item_id')
+            .eq('field_id', targetFieldId)
+            .eq('value', currentUserId)
+            .eq('is_published', false)
+            .is('deleted_at', null);
+          userScopeItemIds = data?.map((d: { item_id: string }) => d.item_id) || [];
+        }
+      } else {
+        // If no user field found but userScope is ON, return nothing
+        userScopeItemIds = [];
+      }
+    }
+
     let items: CollectionItemWithValues[];
     let total: number;
 
@@ -89,12 +123,14 @@ export async function GET(
         offset,
         search,
         knownFieldTypes,
+        userScopeItemIds,
       ));
     } else {
       const filters = {
         ...(search ? { search } : {}),
         limit,
         offset,
+        itemIds: userScopeItemIds,
       };
       ({ items, total } = await getItemsWithValues(id, false, filters, knownFieldTypes));
 

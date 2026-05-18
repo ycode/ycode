@@ -68,6 +68,14 @@ export interface AppDefinition {
 
 export const apps: AppDefinition[] = [
   {
+    id: 'auth_system',
+    name: 'Authentication',
+    description: 'Enable user registration, login, and access control for your published site.',
+    logo: airtableLogo, // Placeholder
+    categories: ['popular'],
+    implemented: true,
+  },
+  {
     id: 'airtable',
     name: 'Airtable',
     description: 'One-way sync from Airtable tables to your Ycode collections with real-time webhook support.',

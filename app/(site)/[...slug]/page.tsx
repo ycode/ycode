@@ -10,7 +10,8 @@ import { fetchPageByPath, fetchPageByPathForMetadata, fetchErrorPage, splitPageD
 import PageRenderer from '@/components/PageRenderer';
 import PasswordForm from '@/components/PasswordForm';
 import { getSettingByKey } from '@/lib/repositories/settingsRepository';
-import { parseAuthCookie, getPasswordProtection, fetchFoldersForAuth } from '@/lib/page-auth';
+import { getPageById } from '@/lib/repositories/pageRepository';
+import { parseAuthCookie, getPageAccess, fetchFoldersForAuth } from '@/lib/page-auth';
 import { getSiteBaseUrl } from '@/lib/url-utils';
 import { matchRedirect } from '@/lib/redirect-utils';
 import type { Page, PageFolder, Translation, Redirect as RedirectType } from '@/types';
@@ -320,19 +321,34 @@ export default async function Page({ params }: PageProps) {
   // Per-page CSS with fallback to global published_css
   const cssForPage = generatedCss || globalSettings.publishedCss || undefined;
 
-  // Check password protection for this page.
-  // First evaluate without cookies() so non-protected pages stay cacheable.
+  // Check access protection for this page.
+  // First evaluate without cookies() so non-restricted pages stay cacheable.
   const folders = await fetchCachedFoldersForAuth();
-  const protectionCheck = getPasswordProtection(page, folders, null);
+  const accessCheck = await getPageAccess(page, folders, null, false);
 
-  // If page is protected, opt into dynamic rendering and read the auth cookie.
-  if (protectionCheck.isProtected) {
+  // If page is restricted, read auth cookie/session and re-check access state.
+  if (accessCheck.isRestricted) {
     await connection();
     const authCookie = await parseAuthCookie();
-    const protection = getPasswordProtection(page, folders, authCookie);
+    const access = await getPageAccess(page, folders, authCookie, true);
 
-    // If page is protected and not unlocked, show 401 error page
-    if (!protection.isUnlocked) {
+    // If access is restricted and not granted, handle based on restriction type
+    if (!access.hasAccess) {
+      // 1. Handle Login Restriction
+      if (access.restrictionType === 'login') {
+        const loginPageId = access.loginPageId;
+        if (loginPageId) {
+          const loginPage = await getPageById(loginPageId, true);
+          if (loginPage) {
+            redirect(`/${loginPage.slug}?redirect=${encodeURIComponent(currentPath)}`);
+          }
+        }
+        
+        // Fallback if no login page is configured
+        redirect(`/login?redirect=${encodeURIComponent(currentPath)}`);
+      }
+
+      // 2. Handle Password Restriction
       const errorPageData = await fetchCachedErrorPage(401);
 
       if (errorPageData) {
@@ -349,8 +365,8 @@ export default async function Page({ params }: PageProps) {
             globalCustomCodeBody={globalSettings.globalCustomCodeBody}
             ycodeBadge={globalSettings.ycodeBadge}
             passwordProtection={{
-              pageId: protection.protectedBy === 'page' ? protection.protectedById : undefined,
-              folderId: protection.protectedBy === 'folder' ? protection.protectedById : undefined,
+              pageId: access.restrictedBy === 'page' ? access.restrictedById : undefined,
+              folderId: access.restrictedBy === 'folder' ? access.restrictedById : undefined,
               redirectUrl: currentPath,
               isPublished: true,
             }}
@@ -366,8 +382,8 @@ export default async function Page({ params }: PageProps) {
             <h2 className="text-2xl font-semibold text-gray-800 mb-4">Password Protected</h2>
             <p className="text-gray-600 mb-8">Enter the password to continue.</p>
             <PasswordForm
-              pageId={protection.protectedBy === 'page' ? protection.protectedById : undefined}
-              folderId={protection.protectedBy === 'folder' ? protection.protectedById : undefined}
+              pageId={access.restrictedBy === 'page' ? access.restrictedById : undefined}
+              folderId={access.restrictedBy === 'folder' ? access.restrictedById : undefined}
               redirectUrl={currentPath}
               isPublished={true}
             />
@@ -418,18 +434,21 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     };
   }
 
-  // Don't leak metadata for protected pages. Checking without cookies keeps
-  // generateMetadata fully static — no need to verify unlock state here since
-  // the page component handles access gating.
+  // Check access protection - don't leak metadata for restricted pages.
+  // First check without cookies() to avoid forcing dynamic metadata for public pages.
   const folders = await fetchCachedFoldersForAuth();
-  const protectionCheck = getPasswordProtection(data.page, folders, null);
+  const accessCheck = await getPageAccess(data.page, folders, null, false);
 
-  if (protectionCheck.isProtected) {
-    return {
-      title: 'Password Protected',
-      description: 'This page is password protected.',
-      robots: { index: false, follow: false },
-    };
+  if (accessCheck.isRestricted) {
+    const authCookie = await parseAuthCookie();
+    const access = await getPageAccess(data.page, folders, authCookie, true);
+    if (!access.hasAccess) {
+      return {
+        title: access.restrictionType === 'login' ? 'Login Required' : 'Password Protected',
+        description: access.restrictionType === 'login' ? 'Please log in to view this page.' : 'This page is password protected.',
+        robots: { index: false, follow: false },
+      };
+    }
   }
 
   const { meta, baseUrl } = await unstable_cache(

@@ -663,12 +663,6 @@ export default async function PageRenderer({
         </>
       )}
 
-      {/* Apply body layer classes immediately to prevent FOUC */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `document.body.className=document.body.className.replace(/\\bycode-body-applied\\b/g,'')+' ${(bodyClasses || 'bg-white').replace(/'/g, "\\'")} ycode-body-applied'`,
-        }}
-      />
       <BodyClassApplier classes={bodyClasses || 'bg-white'} />
 
       <main

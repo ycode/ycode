@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { EditorState, UIState } from '../types';
 import type { Layer, Breakpoint, Asset, AssetCategoryFilter } from '../types';
 import { useCanvasTextEditorStore } from './useCanvasTextEditorStore';
+import { usePagesStore } from './usePagesStore';
 import { updateUrlQueryParam } from '@/hooks/use-editor-url';
 
 // Debounce window for the `?layer=…` URL mirror. Long enough to coalesce
@@ -564,7 +565,17 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setHoveredLayerId: (id) => set({ hoveredLayerId: id }),
   setRenamingLayerId: (id) => set({ renamingLayerId: id }),
 
-  setPreviewMode: (enabled) => set({ isPreviewMode: enabled }),
+  setPreviewMode: (enabled) => {
+    set({ isPreviewMode: enabled });
+    // Reset preview user when exiting preview mode
+    if (!enabled) {
+      usePagesStore.getState().setPreviewUserId(null);
+      // Clear simulation cookie
+      if (typeof document !== 'undefined') {
+        document.cookie = 'ycode_preview_user_id=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+      }
+    }
+  },
 
   setActiveSidebarTab: (tab) => set({ activeSidebarTab: tab }),
   setLastDesignUrl: (url) => set({ lastDesignUrl: url }),

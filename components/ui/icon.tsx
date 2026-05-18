@@ -18,6 +18,7 @@ export interface IconProps extends React.SVGProps<SVGSVGElement> {
     | 'paragraph' | 'droplet' | 'expand' | 'collapse' | 'filter' | 'crosshair' | 'lightbox' | 'slider' | 'slide' | 'slides' | 'slide-button-prev' | 'slide-button-next'
     | 'slide-bullets' | 'slide-bullet' | 'slide-navigation' | 'slide-fraction' | 'loop-alternate' | 'loop-repeat' | 'listItem' | 'external-link'
     | 'settings' | 'center-block' | 'code-block' | 'table' | 'table-row' | 'table-cell' | 'add-column' | 'add-row' | 'delete-column' | 'delete-row' | 'delete-table' | 'header' | 'body'
+    | 'user' | 'logout'
   );
 }
 
@@ -1034,6 +1035,12 @@ const ICONS: Record<IconProps['name'], React.ReactNode> = {
   ),
   settings: (
     <path d="M3.0854 9C3.2913 8.4174 3.8469 8 4.5 8C5.1531 8 5.7087 8.4174 5.9147 9H11V10H5.9147C5.7087 10.5826 5.1531 11 4.5 11C3.8469 11 3.2913 10.5826 3.0854 10H1V9H3.0854ZM6.0854 5.5C6.2913 4.9174 6.8469 4.5 7.5 4.5C8.1531 4.5 8.7087 4.9174 8.9147 5.5H11V6.5H8.9147C8.7087 7.0826 8.1531 7.5 7.5 7.5C6.8469 7.5 6.2913 7.0826 6.0854 6.5H1V5.5H6.0854ZM3.0854 2C3.2913 1.4174 3.8469 1 4.5 1C5.1531 1 5.7087 1.4174 5.9147 2H11V3H5.9147C5.7087 3.5826 5.1531 4 4.5 4C3.8469 4 3.2913 3.5826 3.0854 3H1V2H3.0854Z" />
+  ),
+  user: (
+    <path d="M6 6c1.657 0 3-1.343 3-3S7.657 0 6 0 3 1.343 3 3s1.343 3 3 3zm0 1c-2.21 0-4 1.79-4 4v1h8v-1c0-2.21-1.79-4-4-4z" />
+  ),
+  logout: (
+    <path d="M9 1v1h2v8H9v1h3V1H9zm-5 2L0 6l4 4V7h6V5H4V3z" />
   ),
 };
 

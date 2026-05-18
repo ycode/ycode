@@ -8,6 +8,9 @@ import type { Page, PageLayers, Layer, Asset, AssetCategory, PageFolder, ApiResp
 import type { StatusAction } from '@/lib/collection-field-utils';
 import type { CollectionUsageResult, CollectionFieldUsageResult } from '@/lib/collection-usage-utils';
 
+import { usePagesStore } from '@/stores/usePagesStore';
+import { useEditorStore } from '@/stores/useEditorStore';
+
 // All API routes are now relative (Next.js API routes)
 const API_BASE = '';
 
@@ -24,10 +27,15 @@ async function apiRequest<T>(
 ): Promise<ApiResponse<T>> {
   const token = await getAuthToken();
 
+  // Get preview user ID from store if in browser AND in preview mode
+  const isPreviewMode = typeof window !== 'undefined' ? useEditorStore.getState().isPreviewMode : false;
+  const previewUserId = (typeof window !== 'undefined' && isPreviewMode) ? usePagesStore.getState().previewUserId : null;
+
   const response = await fetch(`${API_BASE}${endpoint}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),
+      ...(previewUserId && { 'x-ycode-preview-user-id': previewUserId }),
       ...options.headers,
     },
     ...options,
@@ -550,6 +558,8 @@ export const collectionsApi = {
       offset?: number;
       filters?: Array<{ fieldId: string; operator: string; value: string }>;
       includeAssets?: boolean;
+      userScope?: boolean;
+      userScopeFieldId?: string;
     }
   ): Promise<ApiResponse<{ items: CollectionItemWithValues[]; total: number; page: number; limit: number; referencedAssets?: Asset[] }>> {
     const params = new URLSearchParams();
@@ -561,6 +571,8 @@ export const collectionsApi = {
     if (options?.offset !== undefined) params.append('offset', options.offset.toString());
     if (options?.filters?.length) params.append('filters', JSON.stringify(options.filters));
     if (options?.includeAssets) params.append('includeAssets', 'true');
+    if (options?.userScope) params.append('userScope', 'true');
+    if (options?.userScopeFieldId) params.append('userScopeFieldId', options.userScopeFieldId);
     const queryString = params.toString();
     const url = `/ycode/api/collections/${collectionId}/items${queryString ? `?${queryString}` : ''}`;
     return apiRequest<{ items: CollectionItemWithValues[]; total: number; page: number; limit: number; referencedAssets?: Asset[] }>(url);
@@ -976,9 +988,32 @@ export const colorVariablesApi = {
   },
 };
 
+// Apps API
+export const appsApi = {
+  // Get settings for an app
+  async getSettings(appId: string): Promise<ApiResponse<Record<string, any>>> {
+    return apiRequest<Record<string, any>>(`/ycode/api/apps/${appId}/settings`);
+  },
+
+  // Update settings for an app
+  async updateSettings(appId: string, settings: Record<string, any>): Promise<ApiResponse<Record<string, any>>> {
+    return apiRequest<Record<string, any>>(`/ycode/api/apps/${appId}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  },
+
+  // Disconnect an app
+  async disconnect(appId: string): Promise<ApiResponse<void>> {
+    return apiRequest<void>(`/ycode/api/apps/${appId}/settings`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 /**
  * Delete an asset (from both storage and database)
- *
+...
  * @param assetId - Asset ID to delete
  * @returns True if successful, false otherwise
  */
