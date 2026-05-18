@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllLocales, createLocale } from '@/lib/repositories/localeRepository';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 /**
  * GET /ycode/api/locales
@@ -7,6 +8,11 @@ import { getAllLocales, createLocale } from '@/lib/repositories/localeRepository
  */
 export async function GET() {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const locales = await getAllLocales();
     
     return NextResponse.json({ data: locales });
@@ -25,6 +31,11 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { code, label, is_default } = body;
     

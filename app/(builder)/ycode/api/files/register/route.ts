@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { createAsset } from '@/lib/repositories/assetRepository';
 import { STORAGE_BUCKET, getDisplayName } from '@/lib/asset-constants';
 
+import { getAdminUser } from '@/lib/supabase-auth';
+
 export const runtime = 'nodejs';
 
 /**
@@ -11,6 +13,11 @@ export const runtime = 'nodejs';
  * Pairs with the presign route for large file uploads.
  */
 export async function POST(request: NextRequest) {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { storagePath, filename, mimeType, fileSize, source, customName, assetFolderId } = body as {

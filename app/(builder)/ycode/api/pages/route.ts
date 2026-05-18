@@ -1,7 +1,8 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getAllPages, createPage } from '@/lib/repositories/pageRepository';
 import { upsertDraftLayers } from '@/lib/repositories/pageLayersRepository';
 import { noCache } from '@/lib/api-response';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 // Disable caching for this route
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,11 @@ export const revalidate = 0;
  * - /api/pages?is_index=true&page_folder_id=null&is_published=true - Get homepage (published)
  */
 export async function GET(request: NextRequest) {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     // Parse query parameters
     const { searchParams } = new URL(request.url);
@@ -68,6 +74,11 @@ export async function GET(request: NextRequest) {
  * Create a new page
  */
 export async function POST(request: NextRequest) {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
 

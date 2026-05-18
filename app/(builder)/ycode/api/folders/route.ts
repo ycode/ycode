@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { getAllPageFolders, createPageFolder } from '@/lib/repositories/pageFolderRepository';
 import { noCache } from '@/lib/api-response';
 
@@ -13,6 +14,11 @@ export const revalidate = 0;
  */
 export async function GET() {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     // Only return draft folders for the builder
     const folders = await getAllPageFolders({ is_published: false });
 
@@ -36,6 +42,11 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const body = await request.json();
     const { name, slug, page_folder_id = null, depth = 0, order = 0, settings = {} } = body;
 

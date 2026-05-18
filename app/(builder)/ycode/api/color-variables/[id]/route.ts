@@ -4,6 +4,7 @@ import {
   deleteColorVariable,
 } from '@/lib/repositories/colorVariableRepository';
 import { noCache } from '@/lib/api-response';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -16,6 +17,11 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { id } = await params;
     const body = await request.json();
 
@@ -40,6 +46,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { id } = await params;
 
     await deleteColorVariable(id);

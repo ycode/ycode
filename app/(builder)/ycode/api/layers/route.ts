@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { getLayersByPageId, upsertDraftLayers } from '@/lib/repositories/pageLayersRepository';
 import { noCache } from '@/lib/api-response';
 import type { Layer } from '@/types';
@@ -14,6 +15,11 @@ export const revalidate = 0;
  */
 export async function GET(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { searchParams } = new URL(request.url);
     const pageId = searchParams.get('page_id');
     const isPublishedParam = searchParams.get('is_published');
@@ -57,6 +63,11 @@ export async function GET(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { searchParams } = new URL(request.url);
     const pageId = searchParams.get('page_id');
 

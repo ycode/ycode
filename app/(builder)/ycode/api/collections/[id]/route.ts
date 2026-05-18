@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCollectionById, updateCollection, deleteCollection } from '@/lib/repositories/collectionRepository';
 import { getItemsByCollectionId } from '@/lib/repositories/collectionItemRepository';
 import { deleteTranslationsInBulk } from '@/lib/repositories/translationRepository';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { noCache } from '@/lib/api-response';
 
 // Disable caching for this route
@@ -17,6 +18,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { id } = await params;
 
     // Always get draft version in the builder
@@ -45,6 +51,11 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { id } = await params;
 
     const body = await request.json();
@@ -71,6 +82,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { id } = await params;
 
     // Get all items in this collection (draft versions)

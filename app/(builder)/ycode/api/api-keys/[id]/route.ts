@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getApiKeyById, deleteApiKey } from '@/lib/repositories/apiKeyRepository';
 import { noCache } from '@/lib/api-response';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 // Disable caching for this route
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { id } = await params;
     const key = await getApiKeyById(id);
 
@@ -46,6 +52,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { id } = await params;
 
     // Verify the key exists first

@@ -1,4 +1,5 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { noCache } from '@/lib/api-response';
 import { syncTableRows, cleanupOrphanedRows } from '@/lib/sync-utils';
 import { cleanupOrphanedStorageFiles } from '@/lib/storage-utils';
@@ -81,7 +82,12 @@ function createEmptyStats(): PublishStats {
  *
  * Order: folders → pages/layers → collections → components → layer styles → assets → locales → CSS
  */
-export async function POST(_request: NextRequest) {
+export async function POST(request: NextRequest) {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return noCache({ error: 'Not authenticated' }, 401);
+  }
+
   const startTime = performance.now();
   const stats = createEmptyStats();
 

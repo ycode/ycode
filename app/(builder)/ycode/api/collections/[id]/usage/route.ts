@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { getCollectionUsage } from '@/lib/collection-usage-utils';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { noCache } from '@/lib/api-response';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +15,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { id } = await params;
 
     if (!id) {

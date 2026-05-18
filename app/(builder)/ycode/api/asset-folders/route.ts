@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { getAllAssetFolders, createAssetFolder } from '@/lib/repositories/assetFolderRepository';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { noCache } from '@/lib/api-response';
 
 // Disable caching for this route
@@ -13,6 +14,11 @@ export const revalidate = 0;
  */
 export async function GET() {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const folders = await getAllAssetFolders();
 
     return noCache({
@@ -35,6 +41,11 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const body = await request.json();
     const { name, asset_folder_id = null, depth = 0, order = 0 } = body;
 

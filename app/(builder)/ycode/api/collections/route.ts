@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllCollections, createCollection } from '@/lib/repositories/collectionRepository';
 import { noCache } from '@/lib/api-response';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 // Disable caching for this route
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,11 @@ export const revalidate = 0;
  * Get all collections (draft by default)
  */
 export async function GET() {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     // Always get draft collections in the builder
     const collections = await getAllCollections({ is_published: false, deleted: false });
@@ -32,6 +38,11 @@ export async function GET() {
  * Create a new collection
  */
 export async function POST(request: NextRequest) {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     

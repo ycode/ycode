@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getPageById, updatePage, deletePage } from '@/lib/repositories/pageRepository';
 import { deleteTranslationsInBulk } from '@/lib/repositories/translationRepository';
 import { noCache } from '@/lib/api-response';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 // Disable caching for this route
 export const dynamic = 'force-dynamic';
@@ -16,6 +17,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return noCache({ error: 'Not authenticated' }, 401);
+  }
+
   try {
     const { id } = await params;
     // For GET requests, return draft version (what users edit)
@@ -50,6 +56,11 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return noCache({ error: 'Not authenticated' }, 401);
+  }
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -120,6 +131,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return noCache({ error: 'Not authenticated' }, 401);
+  }
+
   try {
     const { id } = await params;
 

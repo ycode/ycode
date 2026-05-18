@@ -1,4 +1,5 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { noCache } from '@/lib/api-response';
 import { publishPages } from '@/lib/services/pageService';
 import { publishCollectionWithItems, groupItemsByCollection, cleanupDeletedCollections } from '@/lib/services/collectionService';
@@ -105,6 +106,11 @@ function createEmptyStats(): PublishStats {
  * - collectionItemIds: Publish specific collection items (automatically grouped by collection)
  */
 export async function POST(request: NextRequest) {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return noCache({ error: 'Not authenticated' }, 401);
+  }
+
   const startTime = performance.now();
   const stats = createEmptyStats();
 

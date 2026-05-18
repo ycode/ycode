@@ -8,6 +8,7 @@ import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepos
 import { getAssetsByIds } from '@/lib/repositories/assetRepository';
 import { findStatusFieldId, isAssetFieldType, isMultipleAssetField } from '@/lib/collection-field-utils';
 import type { StatusAction } from '@/lib/collection-field-utils';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { noCache } from '@/lib/api-response';
 import type { CollectionItemWithValues, CollectionField } from '@/types';
 
@@ -32,6 +33,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { id } = await params;
 
     // Extract query parameters
@@ -240,6 +246,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { id } = await params;
 
     const body = await request.json();

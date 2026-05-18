@@ -27,8 +27,15 @@ export function useAuthSession(): AuthSessionState {
           return;
         }
 
-        const { data } = await client.auth.getSession();
-        setSession(data.session);
+        const { data } = await client.auth.getUser();
+        const isAdmin = data.user?.app_metadata?.role === 'admin';
+        
+        if (isAdmin) {
+          const { data: sessionData } = await client.auth.getSession();
+          setSession(sessionData.session);
+        } else {
+          setSession(null);
+        }
       } catch {
         // Supabase not available — treated as no session
       } finally {

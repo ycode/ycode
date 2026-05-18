@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { uploadFile } from '@/lib/file-upload';
 import { validateCategoryMimeType } from '@/lib/asset-utils';
 import { MAX_UPLOAD_FILE_SIZE } from '@/lib/asset-constants';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 export const runtime = 'nodejs';
 
@@ -11,6 +12,11 @@ export const runtime = 'nodejs';
  * Used for small files that fit within serverless body limits.
  */
 export async function POST(request: NextRequest) {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;

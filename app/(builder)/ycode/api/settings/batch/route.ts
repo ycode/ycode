@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { setSettings } from '@/lib/repositories/settingsRepository';
 import { clearAllCache, getAllPublishedRoutes, warmRoutes } from '@/lib/services/cacheService';
 
@@ -17,6 +18,11 @@ const DRAFT_ONLY_SETTING_KEYS = new Set(['draft_css', 'email']);
  */
 export async function PUT(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { settings } = body;
 

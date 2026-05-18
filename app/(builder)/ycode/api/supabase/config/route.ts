@@ -1,6 +1,8 @@
+import { NextResponse } from 'next/server';
 import { credentials } from '@/lib/credentials';
 import { parseSupabaseConfig } from '@/lib/supabase-config-parser';
 import { noCache } from '@/lib/api-response';
+import { getAdminUser } from '@/lib/supabase-auth';
 import type { SupabaseConfig } from '@/types';
 
 // Disable caching for this route
@@ -15,6 +17,11 @@ export const revalidate = 0;
  */
 export async function GET() {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const config = await credentials.get<SupabaseConfig>('supabase_config');
 
     if (!config) {

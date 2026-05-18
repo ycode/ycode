@@ -42,6 +42,9 @@ async function apiRequest<T>(
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      return { error: 'Not authenticated' };
+    }
     // Try to parse error message from response body
     try {
       const json = await response.json();
