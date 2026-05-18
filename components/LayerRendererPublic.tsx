@@ -1107,10 +1107,21 @@ const LayerItem: React.FC<{
       }
     }
 
-    if (htmlTag === 'button' && isInsideForm) {
-      if (!normalizedAttributes.type || normalizedAttributes.type === 'button') {
-        elementProps.type = 'submit';
-      }
+    const SocialLogin = dynamic(() => import('@/components/layers/SocialLogin'));
+
+    // ... existing code ...
+
+    // Special handling for social login component
+    if (layer.name === 'social_login' || (layer.name === 'button' && layer.settings?.auth?.type === 'social')) {
+      const provider = layer.settings?.auth?.provider || 'google';
+      
+      return (
+        <SocialLogin
+          provider={provider}
+          className={fullClassName}
+          style={mergedStyle}
+        />
+      );
     }
 
     if (htmlTag === 'form') {

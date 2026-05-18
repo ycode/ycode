@@ -263,10 +263,25 @@ export interface LayerSettings {
   isPlaceholder?: boolean; // Marks an <option> child as a placeholder (disabled, hidden, selected)
   map?: MapSettings; // Map-specific settings (only for map layers)
   auth?: {
-    type?: 'login' | 'register' | 'profile';
+    type?: 'login' | 'register' | 'profile' | 'social';
+    provider?: string;
     redirectUrl?: string;
     loginUrl?: string;
     profileLinks?: { label: string; url: string; icon?: string }[];
+    labels?: {
+      login?: string;
+      logout?: string;
+      profile?: string;
+    };
+    styling?: {
+      showAvatar?: boolean;
+      avatarSource?: 'supabase' | 'cms';
+      backgroundColor?: string;
+      textColor?: string;
+      dropdownBackgroundColor?: string;
+      dropdownTextColor?: string;
+      glassmorphism?: boolean;
+    };
   };
 }
 

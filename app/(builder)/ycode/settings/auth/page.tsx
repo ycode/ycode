@@ -17,11 +17,13 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Spinner } from '@/components/ui/spinner';
+import Icon from '@/components/ui/icon';
 
 export default function AuthSettingsPage() {
   const { pages } = usePagesStore();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [discoveredProviders, setDiscoveredProviders] = useState<string[]>([]);
   
   const [config, setConfig] = useState({
     enabled: false,
@@ -31,17 +33,25 @@ export default function AuthSettingsPage() {
 
   const [providers, setProviders] = useState({
     email: { enabled: true },
-    google: { enabled: false, client_id: '', client_secret: '' },
-    github: { enabled: false, client_id: '', client_secret: '' },
+    google: { enabled: false },
+    github: { enabled: false },
   });
 
   useEffect(() => {
     async function loadSettings() {
       try {
-        const response = await appsApi.getSettings(AUTH_SYSTEM_APP_ID);
-        if (response.data) {
-          if (response.data.config) setConfig(response.data.config);
-          if (response.data.providers) setProviders(response.data.providers);
+        const [settingsRes, discoveryRes] = await Promise.all([
+          appsApi.getSettings(AUTH_SYSTEM_APP_ID),
+          fetch('/api/auth/providers').then(res => res.json())
+        ]);
+
+        if (settingsRes.data) {
+          if (settingsRes.data.config) setConfig(settingsRes.data.config);
+          if (settingsRes.data.providers) setProviders(settingsRes.data.providers);
+        }
+
+        if (discoveryRes.providers) {
+          setDiscoveredProviders(discoveryRes.providers);
         }
       } catch (error) {
         console.error('Failed to load auth settings:', error);
@@ -81,6 +91,8 @@ export default function AuthSettingsPage() {
       </div>
     );
   }
+
+  const isProviderDiscovered = (id: string) => discoveredProviders.includes(id);
 
   return (
     <div className="p-8 max-w-2xl space-y-8">
@@ -153,89 +165,44 @@ export default function AuthSettingsPage() {
 
             {/* Providers */}
             <div className="space-y-4 pt-4 border-t">
-              <h2 className="text-lg font-medium">OAuth Providers</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-medium">OAuth Providers</h2>
+                <a 
+                  href="https://supabase.com/dashboard/project/_/auth/providers" 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                >
+                  Manage in Supabase
+                  <Icon name="external-link" className="size-3" />
+                </a>
+              </div>
               
-              {/* Google */}
-              <div className="space-y-4 p-4 border rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium">Google</div>
-                  <Switch
-                    checked={providers.google.enabled}
-                    onCheckedChange={(enabled) => setProviders({
-                      ...providers,
-                      google: { ...providers.google, enabled }
-                    })}
-                  />
-                </div>
-                {providers.google.enabled && (
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Client ID</Label>
-                      <Input
-                        value={providers.google.client_id}
-                        onChange={(e) => setProviders({
-                          ...providers,
-                          google: { ...providers.google, client_id: e.target.value }
-                        })}
-                        placeholder="your-client-id.apps.googleusercontent.com"
-                      />
+              <div className="grid grid-cols-1 gap-3">
+                {['google', 'github'].map((providerId) => (
+                  <div key={providerId} className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                    <div className="flex items-center gap-3">
+                      <div className="capitalize font-medium">{providerId}</div>
+                      {!isProviderDiscovered(providerId) && (
+                        <div className="text-[10px] bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded">
+                          Not configured in Supabase
+                        </div>
+                      )}
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Client Secret</Label>
-                      <Input
-                        type="password"
-                        value={providers.google.client_secret}
-                        onChange={(e) => setProviders({
-                          ...providers,
-                          google: { ...providers.google, client_secret: e.target.value }
-                        })}
-                        placeholder="••••••••••••••••"
-                      />
-                    </div>
+                    <Switch
+                      disabled={!isProviderDiscovered(providerId)}
+                      checked={(providers as any)[providerId]?.enabled && isProviderDiscovered(providerId)}
+                      onCheckedChange={(enabled) => setProviders({
+                        ...providers,
+                        [providerId]: { enabled }
+                      })}
+                    />
                   </div>
-                )}
+                ))}
               </div>
-
-              {/* GitHub */}
-              <div className="space-y-4 p-4 border rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium">GitHub</div>
-                  <Switch
-                    checked={providers.github.enabled}
-                    onCheckedChange={(enabled) => setProviders({
-                      ...providers,
-                      github: { ...providers.github, enabled }
-                    })}
-                  />
-                </div>
-                {providers.github.enabled && (
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Client ID</Label>
-                      <Input
-                        value={providers.github.client_id}
-                        onChange={(e) => setProviders({
-                          ...providers,
-                          github: { ...providers.github, client_id: e.target.value }
-                        })}
-                        placeholder="Iv1.xxxxxxxxxxxx"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Client Secret</Label>
-                      <Input
-                        type="password"
-                        value={providers.github.client_secret}
-                        onChange={(e) => setProviders({
-                          ...providers,
-                          github: { ...providers.github, client_secret: e.target.value }
-                        })}
-                        placeholder="••••••••••••••••"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Only providers enabled in your Supabase project can be used. Credentials are managed directly in Supabase for better security.
+              </p>
             </div>
           </>
         )}

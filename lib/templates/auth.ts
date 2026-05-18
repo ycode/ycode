@@ -158,16 +158,30 @@ export const authTemplates: Record<string, BlockTemplate> = {
   },
 
   social_login: {
-    icon: 'button',
-    name: 'Social Login',
+    icon: 'google',
+    name: 'Google Login',
     template: {
       name: 'button',
       customName: 'Google Login',
-      classes: ['flex', 'items-center', 'justify-center', 'gap-2', 'w-full', 'h-10', 'border', 'rounded-md'],
+      classes: [
+        'flex', 'items-center', 'justify-center', 'gap-3', 
+        'w-full', 'h-10', 'px-4',
+        'border', 'border-[#dadce0]', 'rounded', 
+        'bg-white', 'text-[#3c4043]', 
+        'text-sm', 'font-medium', 'font-sans',
+        'hover:bg-[#f8f9fa]', 'hover:border-[#d2d4d7]',
+        'active:bg-[#eeeeee]',
+        'transition-colors', 'duration-200'
+      ],
       settings: { auth: { type: 'social', provider: 'google' } } as any,
       children: [
+        {
+          name: 'icon',
+          variables: { icon: { src: { type: 'static_text', data: { content: 'google' } } } } as any,
+          classes: ['size-[18px]'],
+        },
         getTemplateRef('text', {
-          variables: { text: { type: 'dynamic_rich_text', data: { content: getTiptapTextContent('Continue with Google') } } }
+          variables: { text: { type: 'dynamic_rich_text', data: { content: getTiptapTextContent('Sign in with Google') } } }
         })
       ]
     }
