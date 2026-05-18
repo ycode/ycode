@@ -102,6 +102,16 @@ export default function UserStatus({
       }
     }
     checkUser();
+
+    // Listen for preview user changes in the builder
+    if (typeof window !== 'undefined') {
+      const handlePreviewChange = () => {
+        setLoading(true);
+        checkUser();
+      };
+      window.addEventListener('ycode:preview-user-changed', handlePreviewChange);
+      return () => window.removeEventListener('ycode:preview-user-changed', handlePreviewChange);
+    }
   }, []);
 
   const handleLogout = async () => {

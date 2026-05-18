@@ -49,6 +49,11 @@ export default function PreviewUserSelector() {
       // Set session cookie
       document.cookie = `ycode_preview_user_id=${value}; path=/; SameSite=Lax`;
     }
+
+    // Dispatch event to notify components (like UserStatus) that preview user changed
+    window.dispatchEvent(new CustomEvent('ycode:preview-user-changed', { 
+      detail: { userId: value === 'admin' ? null : value } 
+    }));
   };
 
   // Build options and filter by search query

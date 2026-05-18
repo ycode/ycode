@@ -7,6 +7,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies, headers } from 'next/headers';
 import { credentials } from '@/lib/credentials';
 import { parseSupabaseConfig } from '@/lib/supabase-config-parser';
+import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { AuthRole, AUTH_ROLES } from './auth-constants';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import type { SupabaseConfig } from '@/types';
@@ -85,7 +86,25 @@ export async function getSiteUser(): Promise<AuthResult | null> {
   const isAdmin = result.user.app_metadata?.role === AUTH_ROLES.ADMIN;
 
   if (previewUserId && isAdmin) {
-    // Return a mocked result with the preview user ID
+    // If simulating a user, we should fetch the ACTUAL user object from Supabase Auth Admin
+    // to get the correct email, metadata, etc. for that specific user.
+    try {
+      const adminClient = await getSupabaseAdmin();
+      if (adminClient) {
+        const { data: { user: previewUser }, error: fetchError } = await adminClient.auth.admin.getUserById(previewUserId);
+        
+        if (!fetchError && previewUser) {
+          return {
+            ...result,
+            user: previewUser,
+          };
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch preview user details:', e);
+    }
+
+    // Fallback: Return a mocked result with the preview user ID
     // We clone the actual user but overwrite the ID
     return {
       ...result,
