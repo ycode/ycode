@@ -17,6 +17,10 @@
     {
       "path": "/api/cron/airtable-webhooks",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/revalidate-date-presets",
+      "schedule": "0 * * * *"
     }
   ]
 }

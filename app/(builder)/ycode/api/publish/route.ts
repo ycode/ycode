@@ -711,6 +711,25 @@ export async function POST(request: NextRequest) {
           : invalidationResult.reason,
       );
 
+      // Update the stored list of pages whose render depends on date presets
+      // (`$today`, etc.). The daily cron uses this to know which pages to
+      // invalidate when local midnight rolls over. Non-fatal — a publish that
+      // succeeds in every other respect shouldn't be torpedoed by a stale flag.
+      try {
+        const { recomputeTimeDependentPageIds } = await import('@/lib/services/datePresetsService');
+        const affectedForDateScan = [...new Set([...publishedPageIds, ...indirectlyAffectedPageIds])];
+        if (affectedForDateScan.length > 0) {
+          const datePresetResult = await recomputeTimeDependentPageIds(affectedForDateScan);
+          if (datePresetResult.added.length > 0 || datePresetResult.removed.length > 0) {
+            console.log(
+              `[Cache] date-preset flag: +${datePresetResult.added.length} / -${datePresetResult.removed.length} (total ${datePresetResult.total})`,
+            );
+          }
+        }
+      } catch (err) {
+        console.warn('[Cache] date-preset flag update failed:', err instanceof Error ? err.message : err);
+      }
+
       // After invalidation, prime the affected pages in the background so the
       // first real visitor doesn't pay the cold-cache cost. We absorb the
       // STALE/MISS server-side; the visitor's first hit is HIT.

@@ -94,6 +94,33 @@ export async function invalidatePages(routePaths: string[]): Promise<boolean> {
 }
 
 /**
+ * Tag shared by every page response whose render evaluates a date preset
+ * (`$today`, `$this_week`, etc.) in conditional visibility or collection
+ * filters. The daily cron purges this tag at the site's local midnight so
+ * "today" buckets actually roll over for cached pages.
+ */
+export const TIME_DEPENDENT_PAGES_TAG = 'time-dependent-pages';
+
+/**
+ * Invalidate every page tagged as time-dependent. One tag = one purge call,
+ * regardless of how many pages carry it. Same precision rules as
+ * `invalidatePage` apply (Vercel: invalidateByTag; self-hosted: revalidateTag).
+ */
+export async function invalidateTimeDependentPages(): Promise<boolean> {
+  try {
+    if (process.env.VERCEL === '1') {
+      await invalidateByTag(TIME_DEPENDENT_PAGES_TAG);
+    } else {
+      revalidateTag(TIME_DEPENDENT_PAGES_TAG, { expire: 0 });
+    }
+    return true;
+  } catch (error) {
+    console.error('❌ [Cache] Time-dependent invalidation error:', error);
+    return false;
+  }
+}
+
+/**
  * Clear all cache (full site invalidation)
  * Invalidates the root layout which cascades to all pages
  */

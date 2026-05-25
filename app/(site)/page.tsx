@@ -11,6 +11,8 @@ import { getSettingByKey } from '@/lib/repositories/settingsRepository';
 import { matchRedirect } from '@/lib/redirect-utils';
 import { parseAuthCookie, getPasswordProtection, fetchFoldersForAuth } from '@/lib/page-auth';
 import { getSiteBaseUrl } from '@/lib/url-utils';
+import { TIME_DEPENDENT_PAGES_TAG } from '@/lib/services/cacheService';
+import { PAGES_WITH_DATE_PRESETS_SETTING } from '@/lib/services/datePresetsService';
 import type { Redirect as RedirectType } from '@/types';
 import type { Metadata } from 'next';
 
@@ -21,7 +23,7 @@ export const revalidate = false; // Cache indefinitely until publish invalidates
  * Fetch homepage data from database
  * Cached with tag-based revalidation (no time-based stale cache)
  */
-async function fetchPublishedHomepage() {
+async function fetchPublishedHomepage(isTimeDependent: boolean) {
   // Tags are both 'route-/' AND 'all-pages':
   // - route-/ lets selective invalidation purge just this page's data cache
   // - all-pages lets full invalidation (color variables, redirects, etc.)
@@ -30,7 +32,10 @@ async function fetchPublishedHomepage() {
   // invalidation of one route doesn't disturb others. (Next.js bug #63509
   // would apply if we used revalidateTag for selective on Vercel, but we
   // route exclusively through invalidateByTag here.)
+  // `time-dependent-pages` is added opt-in for pages with `$today`/preset-based
+  // visibility or filter rules so the daily cron can roll them over.
   const tags = ['route-/', 'all-pages'];
+  if (isTimeDependent) tags.push(TIME_DEPENDENT_PAGES_TAG);
   const opts = { tags, revalidate: false as const };
 
   const [core, layers] = await Promise.all([
@@ -105,6 +110,38 @@ async function fetchCachedFoldersForAuth() {
   }
 }
 
+/**
+ * Returns whether the homepage is in the stored "time-dependent" set.
+ * We fetch the homepage core once (cached) to resolve the page ID, then
+ * check membership in the cached id list.
+ */
+async function isHomepageTimeDependent(): Promise<boolean> {
+  try {
+    const [timeDependentIds, core] = await Promise.all([
+      unstable_cache(
+        async () => {
+          const value = await getSettingByKey(PAGES_WITH_DATE_PRESETS_SETTING);
+          return Array.isArray(value) ? (value as string[]) : [];
+        },
+        ['data-for-time-dependent-page-ids'],
+        { tags: ['all-pages'], revalidate: false },
+      )(),
+      unstable_cache(
+        async () => {
+          const data = await fetchHomepage(true);
+          return data ? splitPageData(data as PageData).core : null;
+        },
+        ['core-/'],
+        { tags: ['route-/', 'all-pages'], revalidate: false },
+      )(),
+    ]);
+    if (timeDependentIds.length === 0) return false;
+    return !!core && timeDependentIds.includes(core.page.id);
+  } catch {
+    return false;
+  }
+}
+
 async function fetchCachedErrorPage(errorCode: 401) {
   return unstable_cache(
     async () => {
@@ -120,7 +157,10 @@ export default async function Home() {
   // Tag this response for Vercel CDN cache invalidation. The publish endpoint
   // purges this exact tag (route-/) so only the homepage cache entry is
   // invalidated. No-ops outside Vercel.
-  await addCacheTag(['route-/', 'all-pages']);
+  const isTimeDependent = await isHomepageTimeDependent();
+  const responseTags = ['route-/', 'all-pages'];
+  if (isTimeDependent) responseTags.push(TIME_DEPENDENT_PAGES_TAG);
+  await addCacheTag(responseTags);
 
   // Check for redirects targeting the homepage
   const redirects = await fetchCachedRedirects();
@@ -136,7 +176,7 @@ export default async function Home() {
   }
 
   // Cache-first homepage path; pagination is served through internal dynamic routes.
-  const data = await fetchPublishedHomepage();
+  const data = await fetchPublishedHomepage(isTimeDependent);
 
   // If no published homepage exists, show default landing page
   if (!data || !data.pageLayers) {
@@ -239,9 +279,11 @@ export default async function Home() {
 
 // Generate metadata
 export async function generateMetadata(): Promise<Metadata> {
-  // Fetch page and global settings in parallel
+  // Keep tag set consistent across metadata + render so we don't create two
+  // cache entries with diverging tags for the same underlying fetch.
+  const isTimeDependent = await isHomepageTimeDependent();
   const [data, globalSettings] = await Promise.all([
-    fetchPublishedHomepage(),
+    fetchPublishedHomepage(isTimeDependent),
     fetchCachedGlobalSettings(),
   ]);
 

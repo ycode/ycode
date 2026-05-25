@@ -12,6 +12,8 @@ import { getSettingByKey } from '@/lib/repositories/settingsRepository';
 import { parseAuthCookie, getPasswordProtection, fetchFoldersForAuth } from '@/lib/page-auth';
 import { getSiteBaseUrl } from '@/lib/url-utils';
 import { matchRedirect } from '@/lib/redirect-utils';
+import { TIME_DEPENDENT_PAGES_TAG } from '@/lib/services/cacheService';
+import { PAGES_WITH_DATE_PRESETS_SETTING } from '@/lib/services/datePresetsService';
 import type { Page, PageFolder, Translation, Redirect as RedirectType } from '@/types';
 
 // Static by default for performance, dynamic only when pagination is requested
@@ -150,7 +152,7 @@ export async function generateStaticParams() {
  * Fetch published page and layers data from database
  * Cached per slug and page for revalidation
  */
-async function fetchPublishedPageWithLayers(slugPath: string) {
+async function fetchPublishedPageWithLayers(slugPath: string, isTimeDependent: boolean) {
   // Tags are both 'route-/X' AND 'all-pages':
   // - route-/X lets selective invalidation purge just this page's data cache
   // - all-pages lets full invalidation (color variables, redirects, etc.)
@@ -159,7 +161,10 @@ async function fetchPublishedPageWithLayers(slugPath: string) {
   // doesn't cascade to entries that only share 'all-pages'. (Next.js bug
   // #63509 would apply if we used revalidateTag for selective, but we route
   // exclusively through invalidateByTag on Vercel.)
+  // `time-dependent-pages` is added opt-in for pages with `$today`/preset-based
+  // visibility or filter rules so the daily cron can roll them over.
   const tags = [`route-/${slugPath}`, 'all-pages'];
+  if (isTimeDependent) tags.push(TIME_DEPENDENT_PAGES_TAG);
   const opts = { tags, revalidate: false as const };
 
   const [core, layers] = await Promise.all([
@@ -193,6 +198,32 @@ async function fetchPublishedPageForMetadata(slugPath: string) {
     [`metadata-/${slugPath}`],
     { tags: [`route-/${slugPath}`, 'all-pages'], revalidate: false }
   )();
+}
+
+/**
+ * Returns whether the page at `slugPath` is in the stored "time-dependent"
+ * set. The membership check needs the page's ID, which we resolve via the
+ * cached metadata fetch (already in cache for the metadata path; cheap one
+ * extra read on a cold cache for the render path).
+ */
+async function isTimeDependentPage(slugPath: string): Promise<boolean> {
+  try {
+    const [timeDependentIds, pageMeta] = await Promise.all([
+      unstable_cache(
+        async () => {
+          const value = await getSettingByKey(PAGES_WITH_DATE_PRESETS_SETTING);
+          return Array.isArray(value) ? (value as string[]) : [];
+        },
+        ['data-for-time-dependent-page-ids'],
+        { tags: ['all-pages'], revalidate: false },
+      )(),
+      fetchPublishedPageForMetadata(slugPath),
+    ]);
+    if (timeDependentIds.length === 0) return false;
+    return !!pageMeta && timeDependentIds.includes(pageMeta.page.id);
+  } catch {
+    return false;
+  }
 }
 
 async function fetchCachedRedirects(): Promise<RedirectType[] | null> {
@@ -267,7 +298,10 @@ export default async function Page({ params }: PageProps) {
   // Tag this response for Vercel CDN cache invalidation. The publish endpoint
   // purges this exact tag (route-/<slug>) so only this URL's cache entry is
   // invalidated. No-ops outside Vercel.
-  await addCacheTag([`route-/${slugPath}`, 'all-pages']);
+  const isTimeDependent = await isTimeDependentPage(slugPath);
+  const responseTags = [`route-/${slugPath}`, 'all-pages'];
+  if (isTimeDependent) responseTags.push(TIME_DEPENDENT_PAGES_TAG);
+  await addCacheTag(responseTags);
 
   // Check for redirects before processing the page
   const currentPath = `/${slugPath}`;
@@ -285,7 +319,7 @@ export default async function Page({ params }: PageProps) {
 
   // Fetch page data and global settings in parallel
   const [data, globalSettings] = await Promise.all([
-    fetchPublishedPageWithLayers(slugPath),
+    fetchPublishedPageWithLayers(slugPath, isTimeDependent),
     fetchCachedGlobalSettings(),
   ]);
 
