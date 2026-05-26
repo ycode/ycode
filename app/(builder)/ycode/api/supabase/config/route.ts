@@ -17,11 +17,6 @@ export const revalidate = 0;
  */
 export async function GET() {
   try {
-    const adminAuth = await getAdminUser();
-    if (!adminAuth) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
     const config = await credentials.get<SupabaseConfig>('supabase_config');
 
     if (!config) {

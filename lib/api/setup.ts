@@ -75,12 +75,13 @@ export async function checkEmailConfirmDisabled(): Promise<{
 }
 
 /**
- * Complete setup (no-op now, kept for compatibility)
+ * Complete setup and promote initial user to admin
  */
 export async function completeSetup(): Promise<ApiResponse<{ redirect_url: string }>> {
-  return {
-    data: {
-      redirect_url: '/ycode',
-    },
-  };
+  const response = await fetch('/ycode/api/setup/complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  return response.json();
 }
