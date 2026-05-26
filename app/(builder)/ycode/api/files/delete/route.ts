@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deleteAsset } from '@/lib/repositories/assetRepository';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 /**
  * DELETE /ycode/api/files/delete
@@ -7,6 +8,11 @@ import { deleteAsset } from '@/lib/repositories/assetRepository';
  * Physical file is only deleted when publishing if the asset was never published
  */
 export async function DELETE(request: NextRequest) {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const assetId = searchParams.get('assetId');

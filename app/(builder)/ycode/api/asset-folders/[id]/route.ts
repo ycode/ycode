@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { deleteAssetFolder, updateAssetFolder, getAssetFolderById } from '@/lib/repositories/assetFolderRepository';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { noCache } from '@/lib/api-response';
 
 // Disable caching for this route
@@ -16,6 +17,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { id } = await params;
 
     const folder = await getAssetFolderById(id);
@@ -51,7 +57,13 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { id } = await params;
+
     const body = await request.json();
 
     // Validate required fields if provided
@@ -88,6 +100,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { id } = await params;
 
     // Delete the folder and all its contents

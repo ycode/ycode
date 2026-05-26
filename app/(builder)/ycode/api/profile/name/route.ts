@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { noCache } from '@/lib/api-response';
-import { getAuthUser } from '@/lib/supabase-auth';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 /**
  * PUT /ycode/api/profile/name
@@ -16,7 +16,7 @@ export async function PUT(request: NextRequest) {
       return noCache({ error: 'Name is required' }, 400);
     }
 
-    const auth = await getAuthUser();
+    const auth = await getAdminUser();
     if (!auth) {
       return noCache({ error: 'Not authenticated' }, 401);
     }

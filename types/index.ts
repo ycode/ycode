@@ -262,6 +262,27 @@ export interface LayerSettings {
   sortByFieldIds?: string[]; // Which field IDs are enabled as sort-by options
   isPlaceholder?: boolean; // Marks an <option> child as a placeholder (disabled, hidden, selected)
   map?: MapSettings; // Map-specific settings (only for map layers)
+  auth?: {
+    type?: 'login' | 'register' | 'profile' | 'social';
+    provider?: string;
+    redirectUrl?: string;
+    loginUrl?: string;
+    profileLinks?: { label: string; url: string; icon?: string }[];
+    labels?: {
+      login?: string;
+      logout?: string;
+      profile?: string;
+    };
+    styling?: {
+      showAvatar?: boolean;
+      avatarSource?: 'supabase' | 'cms';
+      backgroundColor?: string;
+      textColor?: string;
+      dropdownBackgroundColor?: string;
+      dropdownTextColor?: string;
+      glassmorphism?: boolean;
+    };
+  };
 }
 
 export type MapProvider = 'mapbox' | 'google';
@@ -466,6 +487,8 @@ export interface Layer {
     sortOrder?: 'asc' | 'desc';
     sortByInputLayerId?: string;
     sortOrderInputLayerId?: string;
+    userScope?: boolean;
+    userScopeFieldId?: string;
     limit?: number;
     paginationMode?: 'pages' | 'load_more';
     layerTemplate: Layer[];
@@ -703,7 +726,9 @@ export interface PageSettings {
   };
   auth?: {
     enabled: boolean;
-    password: string;
+    password?: string;
+    require_login?: boolean;
+    login_page_id?: string | null;
   };
   seo?: {
     image: StringAssetId | FieldVariable | null; // Asset ID or Field Variable (image field)
@@ -732,7 +757,9 @@ export interface PageLayers {
 export interface PageFolderSettings {
   auth?: {
     enabled: boolean;
-    password: string;
+    password?: string;
+    require_login?: boolean;
+    login_page_id?: string | null;
   };
 }
 
@@ -1305,6 +1332,8 @@ export interface CollectionVariable {
   source_field_type?: 'reference' | 'multi_reference' | 'multi_asset' | 'inverse_reference'; // Type of source field
   source_field_source?: 'page' | 'collection'; // Source of the field (page data or collection layer)
   filters?: ConditionalVisibility; // Filter conditions to apply to collection items
+  userScope?: boolean; // Filter items to only show data belonging to the logged-in user
+  userScopeFieldId?: string; // Specific field ID to match against user ID (optional, defaults to 'supabase_user_id' field)
   pagination?: CollectionPaginationConfig; // Pagination settings for collection
 }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { getAllComponents, createComponent } from '@/lib/repositories/componentRepository';
 
 /**
@@ -7,6 +8,11 @@ import { getAllComponents, createComponent } from '@/lib/repositories/componentR
  */
 export async function GET() {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const components = await getAllComponents();
     
     return NextResponse.json({ data: components });
@@ -25,6 +31,11 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { name, layers, variables } = body;
     

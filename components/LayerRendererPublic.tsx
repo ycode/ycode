@@ -48,6 +48,8 @@ const FilterableCollection = dynamic(() => import('@/components/FilterableCollec
 const LocaleSelector = dynamic(() => import('@/components/layers/LocaleSelector'));
 const AnimationInitializer = dynamic(() => import('@/components/AnimationInitializer'));
 const FilterLayerBehavior = dynamic(() => import('@/components/FilterLayerBehavior'));
+const AuthForm = dynamic(() => import('@/components/layers/AuthForm'));
+const UserStatus = dynamic(() => import('@/components/layers/UserStatus'));
 
 /** True if any layer in the tree has at least one interaction configured. */
 function layerTreeHasInteractions(layers: Layer[]): boolean {
@@ -212,6 +214,8 @@ const LayerRendererPublic: React.FC<LayerRendererPublicProps> = ({
               collectionLayerClasses={layer._filterConfig!.collectionLayerClasses}
               collectionLayerTag={layer._filterConfig!.collectionLayerTag}
               isPublished={layer._filterConfig!.isPublished}
+              userScope={layer._filterConfig!.userScope}
+              userScopeFieldId={layer._filterConfig!.userScopeFieldId}
             >
               {content}
             </FilterableCollection>
@@ -795,6 +799,14 @@ const LayerItem: React.FC<{
         })
     );
 
+    // If inside a form and this is an input with a CMS field mapping, override the name attribute
+    if (isInsideForm && (layer.name === 'input' || layer.name === 'textarea' || layer.name === 'select')) {
+      const cmsFieldId = otherAttributes.cms_field_id;
+      if (cmsFieldId) {
+        normalizedAttributes.name = cmsFieldId;
+      }
+    }
+
     // Parse style string to object if needed (for display: contents from collection wrappers)
     const parsedAttrStyle = typeof attrStyle === 'string'
       ? Object.fromEntries(
@@ -1095,10 +1107,21 @@ const LayerItem: React.FC<{
       }
     }
 
-    if (htmlTag === 'button' && isInsideForm) {
-      if (!normalizedAttributes.type || normalizedAttributes.type === 'button') {
-        elementProps.type = 'submit';
-      }
+    const SocialLogin = dynamic(() => import('@/components/layers/SocialLogin'));
+
+    // ... existing code ...
+
+    // Special handling for social login component
+    if (layer.name === 'social_login' || (layer.name === 'button' && layer.settings?.auth?.type === 'social')) {
+      const provider = layer.settings?.auth?.provider || 'google';
+      
+      return (
+        <SocialLogin
+          provider={provider}
+          className={fullClassName}
+          style={mergedStyle}
+        />
+      );
     }
 
     if (htmlTag === 'form') {
@@ -1705,6 +1728,51 @@ const LayerItem: React.FC<{
           />
         </Tag>
       );
+    }
+
+    // Special handling for auth form (name='auth_form')
+    if (layer.name === 'auth_form') {
+      const authType = layer.settings?.auth?.type || 'login';
+
+      return (
+        <AuthForm
+          type={authType as 'login' | 'register'}
+          className={fullClassName}
+          style={mergedStyle}
+          layerId={layer.id}
+          redirectUrl={layer.settings?.auth?.redirectUrl}
+        >
+          {effectiveChildren && effectiveChildren.length > 0 && (
+            <LayerRendererPublic
+              layers={effectiveChildren}
+              {...sharedRendererProps}
+              isInsideForm={true}
+              ancestorComponentIds={effectiveAncestorIds}
+            />
+          )}
+        </AuthForm>
+      );
+    }
+
+    // Special handling for User Status component
+    if (layer.name === 'user_status') {
+      const loginUrl = layer.settings?.auth?.loginUrl || '/login';
+      const profileLinks = layer.settings?.auth?.profileLinks || [];
+
+      return (
+        <UserStatus
+          className={fullClassName}
+          style={mergedStyle}
+          loginUrl={loginUrl}
+          profileLinks={profileLinks}
+        />
+      );
+    }
+
+    // Collection layers are handled by the server (flattened into _fragments).
+    // If a collection layer is still here without an item ID, it's a template - don't render it.
+    if (getCollectionVariable(layer) && !layer._collectionItemId) {
+      return null;
     }
 
     // Regular elements with text and/or children

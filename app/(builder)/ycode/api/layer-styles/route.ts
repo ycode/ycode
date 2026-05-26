@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { getAllStyles, createStyle } from '@/lib/repositories/layerStyleRepository';
 
 /**
@@ -7,6 +8,11 @@ import { getAllStyles, createStyle } from '@/lib/repositories/layerStyleReposito
  */
 export async function GET() {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const styles = await getAllStyles();
     return NextResponse.json({ data: styles });
   } catch (error) {
@@ -24,6 +30,11 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const body = await request.json();
     
     if (!body.name || body.classes === undefined) {

@@ -42,6 +42,7 @@ interface PagesState {
   pages: Page[];
   folders: PageFolder[];
   draftsByPageId: Record<string, PageLayers>;
+  previewUserId: string | null; // Simulated user ID for previewing as a specific user
   isLoading: boolean;
   error: string | null;
 }
@@ -52,6 +53,7 @@ interface PagesActions {
   setFolders: (folders: PageFolder[]) => void;
   setPagesAndDrafts: (pages: Page[], drafts: PageLayers[]) => void;
   setError: (error: string | null) => void;
+  setPreviewUserId: (userId: string | null) => void;
 
   // Loading Operations
   loadPages: () => Promise<void>;
@@ -249,11 +251,13 @@ export const usePagesStore = create<PagesStore>((set, get) => ({
   pages: [],
   folders: [],
   draftsByPageId: {},
+  previewUserId: null,
   isLoading: false,
   error: null,
 
   setPages: (pages) => set({ pages }),
   setFolders: (folders) => set({ folders }),
+  setPreviewUserId: (userId) => set({ previewUserId: userId }),
 
   setPagesAndDrafts: (pages, drafts) => {
     // Build a map of pageId -> PageLayers

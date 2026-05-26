@@ -42,6 +42,19 @@
   }
 }
 
+/* Icon SVG styling — exclude `.hidden` so Tailwind's `display: none` always
+   wins for hidden icons (this author rule is unlayered and would otherwise
+   beat any layered `.hidden` utility). */
+[data-icon]:not(.hidden) {
+  display: inline-block;
+}
+
+[data-icon] svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 /* Force inline SVG fill/stroke attributes (even on nested nodes) to inherit
    the icon layer's text color — matches the legacy `<i>` wrapper behavior so
    migrated icons with hard-coded colors still tint with `text-*` utilities.

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { getAllAssets, getAssetsPaginated, createAsset } from '@/lib/repositories/assetRepository';
 import { uploadFile, cleanSvgContent, isValidSvg } from '@/lib/file-upload';
 import { noCache } from '@/lib/api-response';
@@ -20,6 +21,11 @@ export const revalidate = 0;
  */
 export async function GET(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const { searchParams } = new URL(request.url);
     const folderIdParam = searchParams.get('folderId');
     const folderIdsParam = searchParams.get('folderIds');
@@ -72,6 +78,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return noCache({ error: 'Not authenticated' }, 401);
+    }
+
     const contentType = request.headers.get('content-type');
 
     // Handle JSON request for SVG creation

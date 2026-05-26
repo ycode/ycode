@@ -12,6 +12,7 @@ import { contentTemplates } from './content';
 import { actionTemplates } from './actions';
 import { mediaTemplates } from './media';
 import { formTemplates } from './forms';
+import { authTemplates } from './auth';
 import { utilityTemplates } from './utilities';
 import { layoutTemplates } from './layouts';
 
@@ -22,6 +23,7 @@ const blocks = {
   ...actionTemplates,
   ...mediaTemplates,
   ...formTemplates,
+  ...authTemplates,
   ...utilityTemplates,
 };
 
@@ -92,7 +94,7 @@ function resolveTemplateRefs(obj: any): any {
     if (Object.keys(overrides).length > 0) {
       const resolvedOverrides: any = {};
       for (const key in overrides) {
-        if (overrides.hasOwnProperty(key)) {
+        if (Object.prototype.hasOwnProperty.call(overrides, key)) {
           // Resolve any __ref in override values (especially important for children arrays)
           resolvedOverrides[key] = resolveTemplateRefs(overrides[key]);
         }
@@ -112,7 +114,7 @@ function resolveTemplateRefs(obj: any): any {
   if (obj && typeof obj === 'object') {
     const resolved: any = {};
     for (const key in obj) {
-      if (obj.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
         resolved[key] = resolveTemplateRefs(obj[key]);
       }
     }

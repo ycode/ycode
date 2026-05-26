@@ -2,6 +2,8 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useCallback, useState } from 'react';
 import { useFilterStore } from '@/stores/useFilterStore';
+import { usePagesStore } from '@/stores/usePagesStore';
+import { useEditorStore } from '@/stores/useEditorStore';
 import type { ConditionalVisibility, Layer } from '@/types';
 import { isDateFieldType, isDatePreset, resolveDateFilterValue } from '@/lib/collection-field-utils';
 
@@ -10,6 +12,8 @@ interface FilterableCollectionProps {
   collectionId: string;
   collectionLayerId: string;
   filters: ConditionalVisibility;
+  userScope?: boolean;
+  userScopeFieldId?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
   sortByInputLayerId?: string;
@@ -29,6 +33,8 @@ export default function FilterableCollection({
   collectionId,
   collectionLayerId,
   filters,
+  userScope,
+  userScopeFieldId,
   sortBy,
   sortOrder,
   sortByInputLayerId,
@@ -40,6 +46,8 @@ export default function FilterableCollection({
   collectionLayerTag,
   isPublished = true,
 }: FilterableCollectionProps) {
+  const isPreviewMode = useEditorStore((s) => s.isPreviewMode);
+  const previewUserId = usePagesStore((s) => s.previewUserId);
   const markerRef = useRef<HTMLSpanElement>(null);
   const ssrChildrenRef = useRef<Element[]>([]);
   const [isFiltering, setIsFiltering] = useState(false);
@@ -50,7 +58,7 @@ export default function FilterableCollection({
 
   const hasInputLinkedFilters = filters.groups.some(g =>
     g.conditions.some(c => c.inputLayerId || c.inputLayerId2)
-  );
+  ) || userScope;
   const pendingFirstEvalRef = useRef(hasInputLinkedFilters);
 
   const [filteredPage, setFilteredPage] = useState(1);
@@ -522,13 +530,21 @@ export default function FilterableCollection({
     abortRef.current = controller;
     inFlightRequestKeyRef.current = requestKey;
 
+    // Get preview user ID if in builder and in preview mode
+    const effectivePreviewUserId = (typeof window !== 'undefined' && isPreviewMode) ? previewUserId : null;
+
     fetch(`/ycode/api/collections/${collectionId}/items/filter`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...(effectivePreviewUserId && { 'x-ycode-preview-user-id': effectivePreviewUserId })
+      },
       body: JSON.stringify({
         layerTemplate,
         collectionLayerId,
         filterGroups,
+        userScope,
+        userScopeFieldId,
         sortBy: effectiveSortBy,
         sortOrder: effectiveSortOrder,
         limit,
@@ -586,7 +602,7 @@ export default function FilterableCollection({
           abortRef.current = null;
         }
       });
-  }, [collectionId, collectionLayerId, layerTemplate, effectiveSortBy, effectiveSortOrder, limit, paginationMode, updateEmptyStateElements, injectFilteredHTML, collectionLayerClasses, collectionLayerTag, isPublished]);
+  }, [collectionId, collectionLayerId, layerTemplate, effectiveSortBy, effectiveSortOrder, limit, paginationMode, updateEmptyStateElements, injectFilteredHTML, collectionLayerClasses, collectionLayerTag, isPublished, userScope, userScopeFieldId, isPreviewMode, previewUserId]);
 
   const fetchFilteredRef = useRef(fetchFiltered);
   useEffect(() => { fetchFilteredRef.current = fetchFiltered; }, [fetchFiltered]);
@@ -604,12 +620,13 @@ export default function FilterableCollection({
         return false;
       })
     );
-    const hasRuntimeControls = hasActiveInputValues || hasRuntimeSortOverride;
+    const hasRuntimeControls = hasActiveInputValues || hasRuntimeSortOverride || userScope;
     const filterKey = JSON.stringify({
       filterGroups,
       sortBy: effectiveSortBy,
       sortOrder: effectiveSortOrder,
       hasRuntimeControls,
+      userScope,
     });
 
     if (filterKey === prevFilterKeyRef.current) {
@@ -682,7 +699,7 @@ export default function FilterableCollection({
 
     const startOffset = (startPage - 1) * (limit || 10);
     fetchFiltered(filterGroups, startOffset, false);
-  }, [filterValues, buildApiFilters, fetchFiltered, paginationMode, attachPaginationIntercept, detachPaginationIntercept, restoreSsrPagination, getSsrPaginationWrapper, updateEmptyStateElements, fpKey, pKey, limit, hasRuntimeSortOverride, effectiveSortBy, effectiveSortOrder, showSSR, clearFilteredDOM]);
+  }, [filterValues, buildApiFilters, fetchFiltered, paginationMode, attachPaginationIntercept, detachPaginationIntercept, restoreSsrPagination, getSsrPaginationWrapper, updateEmptyStateElements, fpKey, pKey, limit, hasRuntimeSortOverride, effectiveSortBy, effectiveSortOrder, showSSR, clearFilteredDOM, filters.groups, userScope]);
 
   useEffect(() => {
     if (!hasActiveFilters || paginationMode !== 'pages') return;

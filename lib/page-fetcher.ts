@@ -1,6 +1,8 @@
 import { cache } from 'react';
 import { escapeHtml } from '@/lib/escape-html';
 import { getSupabaseAdmin } from '@/lib/supabase-server';
+import { getSiteUser } from '@/lib/supabase-auth';
+import { USERS_COLLECTION_ID } from '@/lib/auth-constants';
 import { getKnexClient } from '@/lib/knex-client';
 import { buildSlugPath, buildDynamicPageUrl, buildLocalizedSlugPath, buildLocalizedDynamicPageUrl, detectLocaleFromPath, matchPageWithTranslatedSlugs, matchDynamicPageWithTranslatedSlugs } from '@/lib/page-utils';
 import { getItemWithValues, getItemsWithValues, getItemsWithValuesByIds, getItemIdsByFieldValue, getItemsByCollectionId } from '@/lib/repositories/collectionItemRepository';
@@ -2188,10 +2190,49 @@ export async function resolveCollectionLayers(
     await enrichItemsWithCountValues(items, collId, isPublished);
   }
 
+  // 1. Resolve current user for variable resolution
+  let currentUserValues: Record<string, string> | undefined;
+  const siteAuth = await getSiteUser();
+  if (siteAuth?.user) {
+    const { getSupabaseAdmin } = await import('@/lib/supabase-server');
+    const client = await getSupabaseAdmin();
+    if (client) {
+      // Find the 'supabase_user_id' field ID
+      const { data: fieldData } = await client
+        .from('collection_fields')
+        .select('id')
+        .eq('collection_id', USERS_COLLECTION_ID)
+        .eq('key', 'supabase_user_id')
+        .eq('is_published', isPublished)
+        .is('deleted_at', null)
+        .single();
+
+      if (fieldData) {
+        // Get the item ID for this user
+        const { data: itemValue } = await client
+          .from('collection_item_values')
+          .select('item_id')
+          .eq('field_id', fieldData.id)
+          .eq('value', siteAuth.user.id)
+          .eq('is_published', isPublished)
+          .is('deleted_at', null)
+          .single();
+
+        if (itemValue) {
+          // Get all values for this item
+          const values = await getValuesByItemIds([itemValue.item_id], isPublished);
+          currentUserValues = values[itemValue.item_id];
+        }
+      }
+    }
+  }
+
+  const initialLayerDataMap: Record<string, Record<string, string>> = currentUserValues ? { current_user: currentUserValues } : {};
+
   const resolveLayer = async (
     layer: Layer,
     itemValues?: Record<string, string>,
-    parentLayerDataMap?: Record<string, Record<string, string>>,
+    parentLayerDataMap: Record<string, Record<string, string>> = initialLayerDataMap,
     parentItemId?: string
   ): Promise<Layer> => {
     // Merge parent's layer data map with layer's own map
@@ -2527,7 +2568,8 @@ export async function resolveCollectionLayers(
               g.conditions.some(c => !!c.inputLayerId || !!c.inputLayerId2)
             ) ||
             collectionVariable.sort_by_inputLayerId ||
-            collectionVariable.sort_order_inputLayerId
+            collectionVariable.sort_order_inputLayerId ||
+            collectionVariable.userScope
           );
 
           // Return a fragment layer - LayerRenderer will render children directly without wrapper
@@ -2550,6 +2592,8 @@ export async function resolveCollectionLayers(
               collectionId: collectionVariable.id,
               collectionLayerId: layer.id,
               filters: collectionFilters || { groups: [] },
+              userScope: collectionVariable.userScope,
+              userScopeFieldId: collectionVariable.userScopeFieldId,
               sortBy: collectionVariable.sort_by,
               sortOrder: collectionVariable.sort_order,
               sortByInputLayerId: collectionVariable.sort_by_inputLayerId,

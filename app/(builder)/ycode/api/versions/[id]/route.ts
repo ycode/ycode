@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVersionById } from '@/lib/repositories/versionRepository';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 /**
  * GET /ycode/api/versions/[id]
@@ -10,6 +11,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const { id } = await params;
 
     const version = await getVersionById(id);

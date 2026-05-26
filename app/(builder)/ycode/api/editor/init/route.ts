@@ -11,6 +11,7 @@ import { getAllAssets } from '@/lib/repositories/assetRepository';
 import { getAllAssetFolders } from '@/lib/repositories/assetFolderRepository';
 import { getAllFonts } from '@/lib/repositories/fontRepository';
 import { getMapboxAccessToken, getGoogleMapsEmbedApiKey } from '@/lib/map-server';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 /**
  * GET /ycode/api/editor/init
@@ -28,6 +29,11 @@ import { getMapboxAccessToken, getGoogleMapsEmbedApiKey } from '@/lib/map-server
  * - All fonts
  */
 export async function GET() {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     // Load all data in parallel (only drafts for editor)
     const [pages, drafts, folders, components, styles, settings, collections, locales, assets, assetFolders, fonts, resolvedMapboxToken, resolvedGoogleMapsEmbedKey] = await Promise.all([

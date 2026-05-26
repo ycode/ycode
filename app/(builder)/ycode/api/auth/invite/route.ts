@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { noCache } from '@/lib/api-response';
+import { AUTH_ROLES } from '@/lib/auth-constants';
 
 /**
  * POST /ycode/api/auth/invite
@@ -51,6 +52,19 @@ export async function POST(request: NextRequest) {
         { error: error.message },
         400
       );
+    }
+
+    if (data.user) {
+      // Promote to admin in app_metadata (required for builder access)
+      const { error: updateError } = await client.auth.admin.updateUserById(
+        data.user.id,
+        { app_metadata: { role: AUTH_ROLES.ADMIN } }
+      );
+
+      if (updateError) {
+        console.error('[invite] Error promoting user to admin:', updateError);
+        // We don't fail the whole request since the user was created/invited
+      }
     }
 
     return noCache({

@@ -44,6 +44,7 @@ import { usePagesStore } from '@/stores/usePagesStore';
 import { useComponentsStore } from '@/stores/useComponentsStore';
 import { useCollectionsStore } from '@/stores/useCollectionsStore';
 import { useCollectionLayerStore } from '@/stores/useCollectionLayerStore';
+import { useCurrentUserStore } from '@/stores/useCurrentUserStore';
 import { useLocalisationStore } from '@/stores/useLocalisationStore';
 import { useAssetsStore } from '@/stores/useAssetsStore';
 import { useCanvasTextEditorStore } from '@/stores/useCanvasTextEditorStore';
@@ -643,6 +644,13 @@ const CenterCanvas = React.memo(function CenterCanvas({
   const setCurrentPageCollectionItemId = useEditorStore((state) => state.setCurrentPageCollectionItemId);
   const setHoveredLayerId = useEditorStore((state) => state.setHoveredLayerId);
   const isPreviewMode = useEditorStore((state) => state.isPreviewMode);
+  const previewUserId = usePagesStore((state) => state.previewUserId);
+  const fetchCurrentUserProfile = useCurrentUserStore((s) => s.fetchProfile);
+
+  // Sync simulated user profile to client store for variable resolution
+  useEffect(() => {
+    fetchCurrentUserProfile(previewUserId);
+  }, [previewUserId, fetchCurrentUserProfile]);
   const activeSidebarTab = useEditorStore((state) => state.activeSidebarTab);
   const activeInteractionTriggerLayerId = useEditorStore((state) => state.activeInteractionTriggerLayerId);
   const activeInteractionTargetLayerIds = useEditorStore((state) => state.activeInteractionTargetLayerIds);
@@ -1197,6 +1205,8 @@ const CenterCanvas = React.memo(function CenterCanvas({
       sortOrder: 'asc' | 'desc' | undefined;
       limit: number | undefined;
       offset: number | undefined;
+      userScope: boolean | undefined;
+      userScopeFieldId: string | undefined;
     }> = [];
     const traverse = (layerList: Layer[]) => {
       layerList.forEach((layer) => {
@@ -1210,6 +1220,8 @@ const CenterCanvas = React.memo(function CenterCanvas({
             sortOrder: opts?.sortOrder || collectionVariable.sort_order || undefined,
             limit: collectionVariable.limit ?? undefined,
             offset: collectionVariable.offset ?? undefined,
+            userScope: collectionVariable.userScope || undefined,
+            userScopeFieldId: collectionVariable.userScopeFieldId || undefined,
           });
         }
         if (layer.children && layer.children.length > 0) {
@@ -1225,9 +1237,9 @@ const CenterCanvas = React.memo(function CenterCanvas({
   // (text content, design changes) don't re-arm the debounced fetch timer.
   const collectionLayersKey = useMemo(
     () => collectionFetchParams
-      .map((p) => `${p.layerId}:${p.collectionId}:${p.sortBy ?? ''}:${p.sortOrder ?? ''}:${p.limit ?? ''}:${p.offset ?? ''}`)
+      .map((p) => `${p.layerId}:${p.collectionId}:${p.sortBy ?? ''}:${p.sortOrder ?? ''}:${p.limit ?? ''}:${p.offset ?? ''}:${p.userScope ?? ''}:${p.userScopeFieldId ?? ''}:${previewUserId ?? ''}:${isPreviewMode}`)
       .join('|'),
-    [collectionFetchParams],
+    [collectionFetchParams, previewUserId, isPreviewMode],
   );
 
   // Keep latest params reachable from inside the debounced timer without
@@ -1244,7 +1256,7 @@ const CenterCanvas = React.memo(function CenterCanvas({
     fetchTimeoutRef.current = setTimeout(() => {
       const params = collectionFetchParamsRef.current;
       params.forEach((p) => {
-        fetchLayerData(p.layerId, p.collectionId, p.sortBy, p.sortOrder, p.limit, p.offset);
+        fetchLayerData(p.layerId, p.collectionId, p.sortBy, p.sortOrder, p.limit, p.offset, undefined, p.userScope, p.userScopeFieldId);
       });
       fetchTimeoutRef.current = null;
     }, 100);
@@ -1961,8 +1973,16 @@ const CenterCanvas = React.memo(function CenterCanvas({
       ? buildLocalizedDynamicPageUrl(currentPage, folders, collectionItemSlug, selectedLocale, localeTranslations)
       : buildLocalizedSlugPath(currentPage, folders, 'page', selectedLocale, localeTranslations);
 
-    return `/ycode/preview${path === '/' ? '' : path}`;
-  }, [currentPage, folders, currentPageCollectionItemId, collectionItemsFromStore, collectionFieldsFromStore, selectedLocale, localeTranslations]);
+    let url = `/ycode/preview${path === '/' ? '' : path}`;
+
+    // Append preview user ID to force iframe reload and signal backend
+    if (previewUserId) {
+      const separator = url.includes('?') ? '&' : '?';
+      url += `${separator}ycode_preview_user_id=${previewUserId}`;
+    }
+
+    return url;
+  }, [currentPage, folders, currentPageCollectionItemId, collectionItemsFromStore, collectionFieldsFromStore, selectedLocale, localeTranslations, previewUserId]);
 
   // Reload preview iframe every time preview mode opens (covers all change sources:
   // layer edits, component updates, CMS, layer styles, color variables, etc.)

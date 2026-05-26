@@ -1,6 +1,7 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { noCache } from '@/lib/api-response';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 /**
  * GET /ycode/api/auth/users
@@ -9,6 +10,11 @@ import { noCache } from '@/lib/api-response';
  */
 export async function GET(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const client = await getSupabaseAdmin();
 
     if (!client) {
@@ -49,6 +55,12 @@ export async function GET(request: NextRequest) {
     }> = [];
 
     for (const user of data.users) {
+      // Check for the admin role - only admins/editors should be in this list
+      const role = user.app_metadata?.role;
+      if (role !== 'admin') {
+        continue;
+      }
+
       // Get metadata - check both user_metadata and raw_user_meta_data
        
       const userAny = user as any;
@@ -108,6 +120,11 @@ export async function GET(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('id');
 

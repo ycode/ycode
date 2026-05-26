@@ -57,17 +57,23 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { data: { user } } = await supabase.auth.getUser();
       const { data: { session } } = await supabase.auth.getSession();
 
+      // Only allow admins into the builder state
+      const isAdmin = user?.app_metadata?.role === 'admin';
+      const activeUser = isAdmin ? user : null;
+      const activeSession = isAdmin ? session : null;
+
       set({
-        user: user ?? null,
-        session: user ? session : null,
+        user: activeUser,
+        session: activeSession,
         initialized: true,
       });
 
       // Listen for auth changes
       supabase.auth.onAuthStateChange((_event, session) => {
+        const isAdminChange = session?.user?.app_metadata?.role === 'admin';
         set({
-          user: session?.user ?? null,
-          session,
+          user: isAdminChange ? session?.user ?? null : null,
+          session: isAdminChange ? session : null,
         });
       });
     } catch (error) {
@@ -98,9 +104,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/ycode`,
-          // Note: Email confirmation should be disabled in Supabase Dashboard
-          // (Authentication → Providers → Email → Disable "Confirm email")
-          // This is recommended for self-hosted single-admin setups
+          data: {
+            role: 'admin',
+          },
         },
       });
 
@@ -154,6 +160,15 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         return { error: error.message };
       }
 
+      // Check if user is an admin
+      if (data.user?.app_metadata?.role !== 'admin') {
+        // Sign out immediately if not an admin to clear the session
+        await supabase.auth.signOut();
+        const msg = 'Access denied: You do not have administrator permissions.';
+        set({ loading: false, error: msg });
+        return { error: msg };
+      }
+
       set({
         user: data.user,
         session: data.session,
@@ -187,12 +202,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         return;
       }
 
-      const { error } = await supabase.auth.signOut();
-
-      if (error) {
-        set({ loading: false, error: error.message });
-        return;
-      }
+      await supabase.auth.signOut();
 
       set({
         user: null,
@@ -218,9 +228,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
       const { data: { session } } = await supabase.auth.getSession();
 
+      // Only allow admins
+      const isAdmin = session?.user?.app_metadata?.role === 'admin';
+
       set({
-        user: session?.user ?? null,
-        session,
+        user: isAdmin ? session?.user ?? null : null,
+        session: isAdmin ? session : null,
       });
     } catch (error) {
       console.error('Failed to check session:', error);

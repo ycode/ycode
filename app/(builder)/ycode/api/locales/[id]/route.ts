@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLocaleById, updateLocale, deleteLocale } from '@/lib/repositories/localeRepository';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 /**
  * GET /ycode/api/locales/[id]
@@ -10,6 +11,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const { id } = await params;
     const locale = await getLocaleById(id);
     
@@ -36,6 +42,11 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const { id } = await params;
     const body = await request.json();
     const { code, label, is_default } = body;
@@ -66,6 +77,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const { id } = await params;
     await deleteLocale(id);
     

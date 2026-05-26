@@ -91,6 +91,11 @@ export function resolveFieldFromSources(
     return pageCollectionItemData?.[fieldId];
   }
 
+  // Current User source - use simulated or actual user data from map
+  if (source === 'current_user') {
+    return layerDataMap?.current_user?.[fieldId];
+  }
+
   // If specific layer ID is provided and exists in layerDataMap, use that layer's data
   if (collectionLayerId && layerDataMap?.[collectionLayerId]) {
     return layerDataMap[collectionLayerId][fieldId];

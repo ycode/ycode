@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { validateCategoryMimeType } from '@/lib/asset-utils';
 import { STORAGE_BUCKET, MAX_UPLOAD_FILE_SIZE, generateStoragePath } from '@/lib/asset-constants';
 
+import { getAdminUser } from '@/lib/supabase-auth';
+
 export const runtime = 'nodejs';
 
 /**
@@ -11,6 +13,11 @@ export const runtime = 'nodejs';
  * Used for large files that exceed serverless body limits.
  */
 export async function POST(request: NextRequest) {
+  const adminAuth = await getAdminUser();
+  if (!adminAuth) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { filename, mimeType, fileSize, category } = body as {

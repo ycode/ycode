@@ -99,6 +99,7 @@ export async function getTopItemsPerCollection(
 }
 
 export interface CreateCollectionItemData {
+  id?: string; // UUID
   collection_id: string; // UUID
   manual_order?: number;
   is_published?: boolean;
@@ -588,6 +589,7 @@ export async function getItemsSortedByField(
   offset: number = 0,
   search?: string,
   knownFieldTypes?: Record<string, string>,
+  filterItemIds?: string[],
 ): Promise<{ items: CollectionItemWithValues[], total: number }> {
   const knex = await getKnexClient();
 
@@ -607,6 +609,19 @@ export async function getItemsSortedByField(
     searchItemIds = matchRows.map((r: { item_id: string }) => r.item_id);
   }
 
+  // Combine filterItemIds with search results (intersection)
+  let filterIds: string[] | null = null;
+  if (filterItemIds) {
+    if (searchItemIds !== null) {
+      filterIds = filterItemIds.filter(id => searchItemIds!.includes(id));
+      if (filterIds.length === 0) return { items: [], total: 0 };
+    } else {
+      filterIds = filterItemIds;
+    }
+  } else if (searchItemIds !== null) {
+    filterIds = searchItemIds;
+  }
+
   let baseQuery = knex('collection_items as ci')
     .leftJoin('collection_item_values as civ', function () {
       this.on('civ.item_id', 'ci.id')
@@ -621,8 +636,8 @@ export async function getItemsSortedByField(
   if (is_published) {
     baseQuery = baseQuery.andWhere('ci.is_publishable', true);
   }
-  if (searchItemIds) {
-    baseQuery = baseQuery.whereIn('ci.id', searchItemIds);
+  if (filterIds) {
+    baseQuery = baseQuery.whereIn('ci.id', filterIds);
   }
 
   const [countResult, rows] = await Promise.all([
@@ -884,14 +899,14 @@ export async function createItem(itemData: CreateCollectionItemData): Promise<Co
     throw new Error('Supabase client not configured');
   }
 
-  const id = randomUUID();
+  const id = itemData.id || randomUUID();
   const isPublished = itemData.is_published ?? false;
 
   const { data, error } = await client
     .from('collection_items')
     .insert({
-      id,
       ...itemData,
+      id,
       manual_order: itemData.manual_order ?? 0,
       is_published: isPublished,
       is_publishable: itemData.is_publishable ?? true,
@@ -1232,6 +1247,7 @@ export async function publishItem(id: string): Promise<CollectionItem> {
       manual_order: draft.manual_order,
       is_publishable: draft.is_publishable,
       is_published: true,
+      content_hash: draft.content_hash,
       created_at: draft.created_at,
       updated_at: new Date().toISOString(),
     }, {
@@ -1327,64 +1343,34 @@ async function countItemsWithValueChanges(
   client: Exclude<Awaited<ReturnType<typeof getSupabaseAdmin>>, null>,
   itemIds: string[]
 ): Promise<number> {
+  const { getValuesByItemIds } = await import('@/lib/repositories/collectionItemValueRepository');
   const BATCH_SIZE = 50;
   let changedCount = 0;
 
   for (let i = 0; i < itemIds.length; i += BATCH_SIZE) {
     const batchIds = itemIds.slice(i, i + BATCH_SIZE);
 
-    const [draftValsResult, pubValsResult] = await Promise.all([
-      client
-        .from('collection_item_values')
-        .select('item_id, field_id, value')
-        .in('item_id', batchIds)
-        .eq('is_published', false)
-        .is('deleted_at', null)
-        .limit(SUPABASE_QUERY_LIMIT),
-      client
-        .from('collection_item_values')
-        .select('item_id, field_id, value')
-        .in('item_id', batchIds)
-        .eq('is_published', true)
-        .is('deleted_at', null)
-        .limit(SUPABASE_QUERY_LIMIT),
+    const [draftValsByItem, pubValsByItem] = await Promise.all([
+      getValuesByItemIds(batchIds, false),
+      getValuesByItemIds(batchIds, true),
     ]);
-
-    if (draftValsResult.error || pubValsResult.error) {
-      continue; // Skip batch on error, don't break the count
-    }
-
-    // Build published values lookup: item_id -> (field_id -> value)
-    const pubValsByItem = new Map<string, Map<string, string | null>>();
-    for (const v of pubValsResult.data || []) {
-      if (!pubValsByItem.has(v.item_id)) {
-        pubValsByItem.set(v.item_id, new Map());
-      }
-      pubValsByItem.get(v.item_id)!.set(v.field_id, v.value);
-    }
-
-    // Build draft values grouped by item_id
-    const draftValsByItem = new Map<string, Map<string, string | null>>();
-    for (const v of draftValsResult.data || []) {
-      if (!draftValsByItem.has(v.item_id)) {
-        draftValsByItem.set(v.item_id, new Map());
-      }
-      draftValsByItem.get(v.item_id)!.set(v.field_id, v.value);
-    }
 
     // Compare each item's values
     for (const itemId of batchIds) {
-      const draftVals = draftValsByItem.get(itemId) || new Map();
-      const pubVals = pubValsByItem.get(itemId) || new Map();
+      const draftVals = draftValsByItem[itemId] || {};
+      const pubVals = pubValsByItem[itemId] || {};
 
-      if (draftVals.size !== pubVals.size) {
+      const draftKeys = Object.keys(draftVals);
+      const pubKeys = Object.keys(pubVals);
+
+      if (draftKeys.length !== pubKeys.length) {
         changedCount++;
         continue;
       }
 
       let hasChange = false;
-      for (const [fieldId, draftValue] of draftVals) {
-        if (!pubVals.has(fieldId) || draftValue !== pubVals.get(fieldId)) {
+      for (const fieldId of draftKeys) {
+        if (!(fieldId in pubVals) || draftVals[fieldId] !== pubVals[fieldId]) {
           hasChange = true;
           break;
         }

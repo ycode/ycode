@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { noCache } from '@/lib/api-response';
-import { getAuthUser } from '@/lib/supabase-auth';
+import { getAdminUser } from '@/lib/supabase-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-server';
 
 /**
@@ -10,7 +10,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-server';
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const auth = await getAuthUser();
+    const auth = await getAdminUser();
     if (!auth) {
       return noCache({ error: 'Not authenticated' }, 401);
     }

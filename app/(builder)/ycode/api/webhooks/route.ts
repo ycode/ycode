@@ -6,6 +6,7 @@ import {
   type CreateWebhookData,
   type WebhookEventType,
 } from '@/lib/repositories/webhookRepository';
+import { getAdminUser } from '@/lib/supabase-auth';
 
 /**
  * GET /ycode/api/webhooks
@@ -13,6 +14,11 @@ import {
  */
 export async function GET() {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const webhooks = await getAllWebhooks();
     return NextResponse.json({ data: webhooks });
   } catch (error) {
@@ -32,6 +38,11 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { name, url, events, secret, generateSecret, filters } = body;
 

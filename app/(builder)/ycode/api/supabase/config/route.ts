@@ -1,6 +1,8 @@
+import { NextResponse } from 'next/server';
 import { credentials } from '@/lib/credentials';
 import { parseSupabaseConfig } from '@/lib/supabase-config-parser';
 import { noCache } from '@/lib/api-response';
+import { getAdminUser } from '@/lib/supabase-auth';
 import type { SupabaseConfig } from '@/types';
 
 // Disable caching for this route

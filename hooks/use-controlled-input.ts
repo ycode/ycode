@@ -23,7 +23,7 @@
  * ```
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { removeSpaces } from '@/lib/utils';
 
 /**
@@ -40,14 +40,19 @@ export function useControlledInput(
   transform?: (value: string) => string,
   sanitize: boolean = true
 ): [string, (value: string) => void] {
-  const [localValue, setLocalValue] = useState('');
+  const [prevExternalValue, setPrevExternalValue] = useState<string | undefined>(externalValue);
+  const [localValue, setLocalValue] = useState(() => {
+    const valueToSet = externalValue || '';
+    return transform ? transform(valueToSet) : valueToSet;
+  });
 
   // Sync local state when external value changes (e.g., undo/redo, breakpoint switch)
-  useEffect(() => {
+  // We do this during render to avoid cascading renders and comply with React 18+ rules.
+  if (externalValue !== prevExternalValue) {
+    setPrevExternalValue(externalValue);
     const valueToSet = externalValue || '';
-    const transformedValue = transform ? transform(valueToSet) : valueToSet;
-    setLocalValue(transformedValue);
-  }, [externalValue, transform]);
+    setLocalValue(transform ? transform(valueToSet) : valueToSet);
+  }
 
   // Wrapper setter with optional sanitization
   const setValueSafely = (value: string) => {
@@ -70,6 +75,9 @@ export function useControlledInputs<T extends Record<string, string | undefined>
   values: T,
   transform?: (value: string) => string
 ): Record<keyof T, [string, (value: string) => void]> {
+  // Use a stable object to avoid re-creating it on every render
+  // and manually call useControlledInput for each key in a stable way.
+  // Note: This only works if the keys of T are stable.
   const result = {} as Record<keyof T, [string, (value: string) => void]>;
 
   for (const key in values) {

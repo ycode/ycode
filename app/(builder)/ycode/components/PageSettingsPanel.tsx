@@ -136,6 +136,8 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
 
   const [authEnabled, setAuthEnabled] = useState(false);
   const [authPassword, setAuthPassword] = useState('');
+  const [requireLogin, setRequireLogin] = useState(false);
+  const [loginPageId, setLoginPageId] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
   const [collectionId, setCollectionId] = useState<string | null>(null);
@@ -214,11 +216,39 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
     customCodeBody: string;
     authEnabled: boolean;
     authPassword: string;
+    requireLogin: boolean;
+    loginPageId: string | null;
     collectionId: string | null;
     slugFieldId: string | null;
     nextPrevSortBy: string;
     nextPrevSortOrder: 'asc' | 'desc';
   } | null>(null);
+
+  // Initialize initial values for a blank state
+  useEffect(() => {
+    if (!initialValuesRef.current) {
+      initialValuesRef.current = {
+        name: '',
+        slug: '',
+        pageFolderId: null,
+        isIndex: false,
+        seoTitle: '',
+        seoDescription: '',
+        seoImage: null,
+        seoNoindex: false,
+        customCodeHead: '',
+        customCodeBody: '',
+        authEnabled: false,
+        authPassword: '',
+        requireLogin: false,
+        loginPageId: null,
+        collectionId: null,
+        slugFieldId: null,
+        nextPrevSortBy: 'manual',
+        nextPrevSortOrder: 'asc',
+      };
+    }
+  }, []);
 
   const pages = usePagesStore((state) => state.pages);
   const folders = usePagesStore((state) => state.folders);
@@ -366,6 +396,8 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
       customCodeBody !== initial.customCodeBody ||
       authEnabled !== initial.authEnabled ||
       authPassword !== initial.authPassword ||
+      requireLogin !== initial.requireLogin ||
+      (loginPageId || null) !== (initial.loginPageId || null) ||
       collectionId !== initial.collectionId ||
       slugFieldId !== initial.slugFieldId ||
       nextPrevSortBy !== initial.nextPrevSortBy ||
@@ -379,7 +411,7 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
 
     return hasChanges;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, slug, pageFolderId, isIndex, seoTitle, seoDescription, seoImage, seoNoindex, customCodeHead, customCodeBody, authEnabled, authPassword, collectionId, slugFieldId, nextPrevSortBy, nextPrevSortOrder, saveCounter]);
+  }, [name, slug, pageFolderId, isIndex, seoTitle, seoDescription, seoImage, seoNoindex, customCodeHead, customCodeBody, authEnabled, authPassword, requireLogin, loginPageId, collectionId, slugFieldId, nextPrevSortBy, nextPrevSortOrder, saveCounter]);
 
   // Expose method to check for unsaved changes externally
   useImperativeHandle(ref, () => ({
@@ -464,6 +496,8 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
           initialValuesRef.current.customCodeBody = settings?.custom_code?.body || '';
           initialValuesRef.current.authEnabled = settings?.auth?.enabled || false;
           initialValuesRef.current.authPassword = settings?.auth?.password || '';
+          initialValuesRef.current.requireLogin = settings?.auth?.require_login || false;
+          initialValuesRef.current.loginPageId = settings?.auth?.login_page_id || null;
           initialValuesRef.current.collectionId = settings?.cms?.collection_id || null;
           initialValuesRef.current.slugFieldId = settings?.cms?.slug_field_id || null;
           {
@@ -538,6 +572,8 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
       const initialCustomCodeBody = settings?.custom_code?.body || '';
       const initialAuthEnabled = settings?.auth?.enabled || false;
       const initialAuthPassword = settings?.auth?.password || '';
+      const initialRequireLogin = settings?.auth?.require_login || false;
+      const initialLoginPageId = settings?.auth?.login_page_id || null;
       const initialCollectionId = settings?.cms?.collection_id || null;
       const initialSlugFieldId = settings?.cms?.slug_field_id || null;
       const initialIdFieldId = fields[settings?.cms?.collection_id || '']?.find(f => f.key === 'id')?.id;
@@ -559,6 +595,8 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
         customCodeBody: initialCustomCodeBody,
         authEnabled: initialAuthEnabled,
         authPassword: initialAuthPassword,
+        requireLogin: initialRequireLogin,
+        loginPageId: initialLoginPageId,
         collectionId: initialCollectionId,
         slugFieldId: initialSlugFieldId,
         nextPrevSortBy: initialNextPrevSortBy,
@@ -577,6 +615,8 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
       setCustomCodeBody(initialCustomCodeBody);
       setAuthEnabled(initialAuthEnabled);
       setAuthPassword(initialAuthPassword);
+      setRequireLogin(initialRequireLogin);
+      setLoginPageId(initialLoginPageId);
       setCollectionId(initialCollectionId);
       setSlugFieldId(initialSlugFieldId);
       setNextPrevSortBy(initialNextPrevSortBy);
@@ -596,6 +636,8 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
         customCodeBody: '',
         authEnabled: false,
         authPassword: '',
+        requireLogin: false,
+        loginPageId: null,
         collectionId: null,
         slugFieldId: null,
         nextPrevSortBy: 'manual',
@@ -614,6 +656,8 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
       setCustomCodeBody('');
       setAuthEnabled(false);
       setAuthPassword('');
+      setRequireLogin(false);
+      setLoginPageId(null);
       setCollectionId(null);
       setSlugFieldId(null);
       setNextPrevSortBy('manual');
@@ -868,6 +912,8 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
         setCustomCodeBody(initialValuesRef.current.customCodeBody);
         setAuthEnabled(initialValuesRef.current.authEnabled);
         setAuthPassword(initialValuesRef.current.authPassword);
+        setRequireLogin(initialValuesRef.current.requireLogin);
+        setLoginPageId(initialValuesRef.current.loginPageId);
         setCollectionId(initialValuesRef.current.collectionId);
         setSlugFieldId(initialValuesRef.current.slugFieldId);
         setNextPrevSortBy(initialValuesRef.current.nextPrevSortBy);
@@ -897,6 +943,8 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
         setCustomCodeBody(initialValuesRef.current.customCodeBody);
         setAuthEnabled(initialValuesRef.current.authEnabled);
         setAuthPassword(initialValuesRef.current.authPassword);
+        setRequireLogin(initialValuesRef.current.requireLogin);
+        setLoginPageId(initialValuesRef.current.loginPageId);
         setCollectionId(initialValuesRef.current.collectionId);
         setSlugFieldId(initialValuesRef.current.slugFieldId);
         setNextPrevSortBy(initialValuesRef.current.nextPrevSortBy);
@@ -1047,6 +1095,8 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
         auth: {
           enabled: authEnabled,
           password: authPassword.trim(),
+          require_login: requireLogin,
+          login_page_id: loginPageId,
         },
         seo: {
           title: seoTitle.trim(),
@@ -1100,6 +1150,9 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
       setCustomCodeHead(trimmedCustomCodeHead);
       setCustomCodeBody(trimmedCustomCodeBody);
       setAuthPassword(trimmedAuthPassword);
+      setRequireLogin(requireLogin);
+      setLoginPageId(loginPageId);
+
       // Update collection values - normalize to null if either is missing
       const savedCollectionId = collectionId && slugFieldId ? collectionId : null;
       const savedSlugFieldId = collectionId && slugFieldId ? slugFieldId : null;
@@ -1124,6 +1177,8 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
         customCodeBody: trimmedCustomCodeBody,
         authEnabled,
         authPassword: trimmedAuthPassword,
+        requireLogin,
+        loginPageId,
         collectionId: savedCollectionId,
         slugFieldId: savedSlugFieldId,
         nextPrevSortBy: savedNextPrevSortBy,
@@ -1548,6 +1603,48 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
                             {showPassword ? 'Hide' : 'Show'}
                           </Button>
                         </div>
+                      </Field>
+                    )}
+
+                    <Field orientation="horizontal" className="flex flex-row-reverse!">
+                      <FieldContent>
+                        <FieldLabel htmlFor="requireLogin">
+                          Require login
+                        </FieldLabel>
+                        <FieldDescription>
+                          Only logged in site users can access this page.
+                        </FieldDescription>
+                      </FieldContent>
+                      <Checkbox
+                        id="requireLogin"
+                        checked={requireLogin}
+                        onCheckedChange={(checked) => setRequireLogin(checked === true)}
+                        disabled={isErrorPage}
+                      />
+                    </Field>
+
+                    {requireLogin && (
+                      <Field>
+                        <FieldLabel>Login redirect page</FieldLabel>
+                        <FieldDescription>
+                          Page to redirect unauthenticated visitors to.
+                        </FieldDescription>
+                        <Select
+                          value={loginPageId || 'default'}
+                          onValueChange={(val) => setLoginPageId(val === 'default' ? null : val)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Global default" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="default">Global default</SelectItem>
+                            {pages.filter(p => !p.is_dynamic && !p.error_page && p.id !== currentPage?.id).map((p) => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </Field>
                     )}
 

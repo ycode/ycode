@@ -1848,9 +1848,22 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
     components,
   ]);
 
+  // Re-check session when migrations complete (picks up backfilled roles)
+  useEffect(() => {
+    if (migrationsComplete && authInitialized) {
+      useAuthStore.getState().checkSession();
+    }
+  }, [migrationsComplete, authInitialized]);
+
   // Show loading screen while checking Supabase config
   if (supabaseConfigured === null) {
     return <BuilderLoading message="Checking configuration..." />;
+  }
+
+  // Check migrations first (BLOCKING) before showing builder OR login gate
+  // This ensures existing users get their admin role backfilled before they are required to log in
+  if (!migrationsComplete) {
+    return <MigrationChecker onComplete={() => setMigrationsComplete(true)} />;
   }
 
   // Show loading screen while checking authentication
@@ -1953,11 +1966,6 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
 
       </div>
     );
-  }
-
-  // Check migrations first (BLOCKING) before showing builder
-  if (!migrationsComplete) {
-    return <MigrationChecker onComplete={() => setMigrationsComplete(true)} />;
   }
 
   // Wait for builder data to be preloaded (BLOCKING) - prevents race conditions

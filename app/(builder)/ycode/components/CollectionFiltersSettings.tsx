@@ -709,11 +709,47 @@ export default function CollectionFiltersSettings({
                         onChange={(e) => handleValueChange(group.id, condition.id, e.target.value)}
                       />
                     ) : (
-                      <Input
-                        placeholder="Enter value..."
-                        value={condition.value || ''}
-                        onChange={(e) => handleValueChange(group.id, condition.id, e.target.value)}
-                      />
+                      <div className="flex flex-col gap-1.5">
+                        <Select
+                          value={condition.value === 'current_user' ? 'current_user' : (condition.value ? '_custom' : '')}
+                          onValueChange={(v) => {
+                            if (v === 'current_user') {
+                              handleValueChange(group.id, condition.id, 'current_user');
+                            } else if (v === '_custom') {
+                              handleValueChange(group.id, condition.id, '');
+                            } else {
+                              handleValueChange(group.id, condition.id, '');
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Select source..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectItem value="_custom">Static value...</SelectItem>
+                              <SelectItem value="current_user">
+                                <div className="flex items-center gap-2">
+                                  <Icon name="user" className="size-3 text-primary" />
+                                  <span>Current logged-in user</span>
+                                </div>
+                              </SelectItem>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        {condition.value !== 'current_user' && (
+                          <Input
+                            placeholder="Enter value..."
+                            value={condition.value || ''}
+                            onChange={(e) => handleValueChange(group.id, condition.id, e.target.value)}
+                          />
+                        )}
+                        {condition.value === 'current_user' && (
+                          <p className="text-[10px] text-primary font-medium px-1">
+                            Matches the ID of the visitor currently logged in.
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                   <Tooltip>

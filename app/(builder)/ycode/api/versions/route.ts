@@ -4,6 +4,7 @@ import {
   createVersion,
   shouldStoreSnapshot,
 } from '@/lib/repositories/versionRepository';
+import { getAdminUser } from '@/lib/supabase-auth';
 import type { CreateVersionData, VersionEntityType } from '@/types';
 
 /**
@@ -12,6 +13,11 @@ import type { CreateVersionData, VersionEntityType } from '@/types';
  */
 export async function GET(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const entityType = searchParams.get('entityType') as VersionEntityType | null;
     const entityId = searchParams.get('entityId');
@@ -51,6 +57,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const adminAuth = await getAdminUser();
+    if (!adminAuth) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const body = await request.json();
 
     const {
