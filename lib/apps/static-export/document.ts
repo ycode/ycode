@@ -77,7 +77,7 @@ export function renderPageBody(
         ctx.components,
         undefined, // ancestorComponentIds
         false, // isSlideChild
-        undefined, // pageLinkContext
+        { isStaticExport: true }, // pageLinkContext — opt out of iframe htmlEmbed wrapping
       ),
     )
     .filter(Boolean)

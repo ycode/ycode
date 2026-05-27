@@ -3999,6 +3999,13 @@ export interface PageLinkContext {
   pageCollectionItemId?: string;
   pageCollectionSortedItemIds?: string[];
   isPreview?: boolean;
+  /**
+   * Set by the static export to opt out of the iframe-wrapped htmlEmbed
+   * SSR fallback. The live site relies on React hydration to replace the
+   * SSR iframe with an inline `HtmlEmbedRenderer`; the static export has
+   * no hydration, so an iframe with no `height` clips the user's content.
+   */
+  isStaticExport?: boolean;
 }
 
 /** Build an `assetMap`-backed `getAsset` callback compatible with `generateLinkHref`. */
@@ -4393,6 +4400,18 @@ export function layerToHtml(
   // Handle Code Embed layers - render as iframe for SSR
   if (layer.name === 'htmlEmbed') {
     const htmlEmbedCode = layer.settings?.htmlEmbed?.code || '<div>Add your custom code here</div>';
+
+    // Static export has no React hydration to replace the SSR iframe with
+    // an inline HtmlEmbedRenderer mount, and iframes default to ~150px
+    // tall with no `height` set — clipping the user's content. Emit the
+    // code inline so it renders at natural height, matching the editor.
+    // <script> tags in initial document HTML are executed by the browser,
+    // so user-pasted scripts run exactly as authored.
+    if (pageLinkContext?.isStaticExport) {
+      attrs.push('data-html-embed="true"');
+      const inlineAttrsStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
+      return `<div${inlineAttrsStr}>${htmlEmbedCode}</div>`;
+    }
 
     // Create a complete HTML document for iframe srcdoc
     const iframeContent = `<!DOCTYPE html>
