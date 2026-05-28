@@ -57,7 +57,21 @@ async function pushViaApi(config: ExportConfig, files: OutputFile[]): Promise<nu
   const headers = apiHeaders(token)
 
   // 1. Resolve current branch state
-  const branchState = await getBranchState(repo, branch, headers)
+  let branchState = await getBranchState(repo, branch, headers)
+
+  // 1a. Bootstrap empty repos. The Git Data API (blobs/trees/commits)
+  // refuses to write to a repo with unborn HEAD and returns 409
+  // "Git Repository is empty". The Contents API can create the first
+  // commit and initialize the branch in one call, after which the rest
+  // of the flow works normally. The placeholder file is overwritten by
+  // the real tree on the next step (createTree replaces all paths).
+  if (!branchState.exists) {
+    await bootstrapEmptyRepo(repo, branch, authorName, authorEmail, headers)
+    branchState = await getBranchState(repo, branch, headers)
+    if (!branchState.exists || !branchState.commitSha) {
+      throw new Error('Failed to bootstrap empty GitHub repository — branch ref still missing after Contents-API init')
+    }
+  }
 
   // 2. Create blobs for every file
   const treeEntries: TreeEntry[] = await Promise.all(
@@ -112,12 +126,15 @@ async function getBranchState(
     headers,
   })
 
-  if (res.status === 404) {
+  // 404: branch doesn't exist yet (repo has other branches, just not this one).
+  // 409: repo is empty / unborn HEAD (`Git Repository is empty`) — no refs at all.
+  // Both cases fall through to the same create-initial-commit + createRef path.
+  if (res.status === 404 || res.status === 409) {
     return { exists: false, commitSha: null }
   }
 
   if (!res.ok) {
-    throw apiError('Failed to get branch ref', res)
+    throw await apiError('Failed to get branch ref', res)
   }
 
   const body = (await res.json()) as { object: { sha: string } }
@@ -145,7 +162,7 @@ async function createBlob(
   })
 
   if (!res.ok) {
-    throw apiError(`Failed to create blob for "${file.key}"`, res)
+    throw await apiError(`Failed to create blob for "${file.key}"`, res)
   }
 
   const body = (await res.json()) as { sha: string }
@@ -175,7 +192,7 @@ async function createTree(
   })
 
   if (!res.ok) {
-    throw apiError('Failed to create tree', res)
+    throw await apiError('Failed to create tree', res)
   }
 
   const body = (await res.json()) as { sha: string }
@@ -207,7 +224,7 @@ async function createCommit(
   })
 
   if (!res.ok) {
-    throw apiError('Failed to create commit', res)
+    throw await apiError('Failed to create commit', res)
   }
 
   const body = (await res.json()) as { sha: string }
@@ -231,7 +248,7 @@ async function updateRef(
   })
 
   if (!res.ok) {
-    throw apiError('Failed to update branch ref', res)
+    throw await apiError('Failed to update branch ref', res)
   }
 }
 
@@ -248,7 +265,48 @@ async function createRef(
   })
 
   if (!res.ok) {
-    throw apiError('Failed to create branch ref', res)
+    throw await apiError('Failed to create branch ref', res)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Empty-repo bootstrap
+// ---------------------------------------------------------------------------
+
+/**
+ * Create an initial commit on an empty repo via the Contents API so the
+ * Git Data API (blobs/trees/commits) becomes usable. Writes a single
+ * tiny placeholder file (`.ycode-init`) which the next push immediately
+ * replaces when `createTree` runs without a `base_tree`.
+ */
+async function bootstrapEmptyRepo(
+  repo: string,
+  branch: string,
+  authorName: string,
+  authorEmail: string,
+  headers: HeadersInit,
+): Promise<void> {
+  const author = { name: authorName, email: authorEmail }
+  // base64 of "Ycode static export — initializing repository\n"
+  const content = Buffer.from('Ycode static export — initializing repository\n', 'utf-8').toString('base64')
+
+  const res = await fetch(
+    `${GITHUB_API}/repos/${repo}/contents/.ycode-init`,
+    {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        message: 'Initialize repository for Ycode static export',
+        content,
+        branch,
+        author,
+        committer: author,
+      }),
+    },
+  )
+
+  if (!res.ok) {
+    throw await apiError('Failed to initialize empty repository', res)
   }
 }
 
