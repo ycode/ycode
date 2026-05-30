@@ -47,6 +47,8 @@ import {
   COMPARE_OPERATORS,
   PAGE_COLLECTION_OPERATORS,
   isDateFieldType,
+  isDatePreset,
+  DATE_PRESET_OPTIONS,
   SELF_OPERATORS,
 } from '@/lib/collection-field-utils';
 import { findAllCollectionLayers, findAllParentCollectionLayers, getCollectionVariable, CollectionLayerInfo } from '@/lib/layer-utils';
@@ -801,11 +803,39 @@ export default function ConditionalVisibilitySettings({
                   </SelectContent>
                 </Select>
               ) : isDateFieldType(fieldType) ? (
-                <Input
-                  type="date"
-                  value={condition.value || ''}
-                  onChange={(e) => handleValueChange(group.id, condition.id, e.target.value)}
-                />
+                <div className="flex flex-col gap-1.5">
+                  <Select
+                    value={isDatePreset(condition.value) ? condition.value : '_custom'}
+                    onValueChange={(v) => {
+                      if (v === '_custom') {
+                        handleValueChange(group.id, condition.id, '');
+                      } else {
+                        handleValueChange(group.id, condition.id, v);
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="_custom">Custom date...</SelectItem>
+                        {DATE_PRESET_OPTIONS
+                          .filter((opt) => !opt.value.startsWith('$past_'))
+                          .map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  {!isDatePreset(condition.value) && (
+                    <Input
+                      type="date"
+                      value={condition.value || ''}
+                      onChange={(e) => handleValueChange(group.id, condition.id, e.target.value)}
+                    />
+                  )}
+                </div>
               ) : fieldType === 'number' ? (
                 <Input
                   type="number"
