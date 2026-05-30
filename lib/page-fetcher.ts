@@ -30,7 +30,7 @@ import type { LinkResolutionContext } from '@/lib/link-utils';
 import { getLinkSettingsFromMark } from '@/lib/tiptap-extensions/rich-text-link';
 import { SWIPER_CLASS_MAP, SWIPER_DATA_ATTR_MAP } from '@/lib/slider-constants';
 import { resolveInlineVariables, resolveInlineVariablesFromData } from '@/lib/inline-variables';
-import { formatFieldValue } from '@/lib/cms-variables-utils';
+import { formatFieldValue, resolveFieldFromSources } from '@/lib/cms-variables-utils';
 import { buildLayerTranslationKey, getTranslationByKey, hasValidTranslationValue, getTranslationValue, injectTranslatedText, applyCmsTranslations, translateComponentOverrides } from '@/lib/localisation-utils';
 import { formatDateFieldsInItemValues } from '@/lib/date-format-utils';
 import { getSettingByKey } from '@/lib/repositories/settingsRepository';
@@ -40,7 +40,7 @@ import { generateInitialAnimationCSS } from '@/lib/animation-utils';
 import { getMapIframeProps, DEFAULT_MAP_SETTINGS } from '@/lib/map-utils';
 import { getMapboxAccessToken, getGoogleMapsEmbedApiKey } from '@/lib/map-server';
 import { getAssetsByIds } from '@/lib/repositories/assetRepository';
-import { isVirtualAssetField, findDisplayField } from '@/lib/collection-field-utils';
+import { isVirtualAssetField, findDisplayField, hasDynamicDateRule } from '@/lib/collection-field-utils';
 import type { FieldVariable, AssetVariable, DynamicTextVariable, LinkSettings } from '@/types';
 import type { DesignColorVariable } from '@/types';
 
@@ -2981,6 +2981,45 @@ function filterByVisibility(
             : undefined,
         };
       }
+      // Layers whose visibility depends on a date preset ($today, etc.)
+      // are kept in the tree even when the export-time evaluation is false,
+      // so the static-export client-side runtime can re-evaluate against
+      // the current date and reveal/hide them as time passes. We carry the
+      // rule + the resolved field values along on `_dynamicVisibilityRule`
+      // so layerToHtml can serialize them into a data attribute (gated on
+      // pageLinkContext.isStaticExport — live SSR sees the layer present
+      // but display:none, which renders identically to a removed layer).
+      if (hasDynamicDateRule(conditionalVisibility)) {
+        const fieldValues: Record<string, string> = {};
+        for (const group of conditionalVisibility.groups) {
+          for (const condition of group.conditions || []) {
+            if (condition.source !== 'collection_field' || !condition.fieldId) continue;
+            const v = resolveFieldFromSources(
+              condition.fieldId,
+              undefined,
+              effectiveCollectionLayerData,
+              pageCollectionData,
+            );
+            fieldValues[condition.fieldId] = String(v ?? '');
+          }
+        }
+        return {
+          ...layer,
+          _dynamicStyles: {
+            ...(layer._dynamicStyles || {}),
+            display: isVisible ? '' : 'none',
+          },
+          _dynamicVisibilityRule: {
+            rule: conditionalVisibility,
+            fieldValues,
+          },
+          children: layer.children
+            ? layer.children
+              .map(child => filterLayer(child, effectiveCollectionLayerData, effectiveCurrentItemId))
+              .filter((child): child is Layer => child !== null)
+            : undefined,
+        };
+      }
       if (!isVisible) {
         return null;
       }
@@ -4158,6 +4197,15 @@ export function layerToHtml(
 
   if (layer.id) {
     attrs.push(`data-layer-id="${escapeHtml(layer.id)}"`);
+  }
+
+  // Serialize a date-preset visibility rule for the static-export
+  // client-side runtime. Live SSR ignores this entirely — the layer just
+  // renders with its `_dynamicStyles.display` (none / unset) as usual.
+  if (pageLinkContext?.isStaticExport && layer._dynamicVisibilityRule) {
+    attrs.push(
+      `data-ycode-vis-rule="${escapeHtml(JSON.stringify(layer._dynamicVisibilityRule))}"`,
+    );
   }
 
   // Add data attributes for slider nav/pagination elements (used by SliderInitializer)

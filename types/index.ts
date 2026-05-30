@@ -457,6 +457,14 @@ export interface Layer {
   _paginationMeta?: CollectionPaginationMeta;
   // SSR-only property for dynamic inline styles from CMS color field bindings
   _dynamicStyles?: Record<string, string>;
+  // SSR-only property: when a conditionalVisibility rule references a date
+  // preset (e.g. `$today`), the layer is kept in the tree even if the
+  // export-time eval is false, and this metadata is attached so layerToHtml
+  // can serialize it for the static-export client-side runtime to re-eval.
+  _dynamicVisibilityRule?: {
+    rule: ConditionalVisibility;
+    fieldValues: Record<string, string>;
+  };
   // SSR-only property for filterable collection config (when collection has linked filter inputs)
   _filterConfig?: {
     collectionId: string;

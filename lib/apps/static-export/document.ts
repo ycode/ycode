@@ -339,6 +339,153 @@ const INTERACTIONS_BOOT_SCRIPT = `
 })();
 `.trim()
 
+/**
+ * Visibility re-evaluation runtime for the static export. Reads
+ * `data-ycode-vis-rule` data attributes (emitted by `layerToHtml` when
+ * a layer's conditionalVisibility references a date preset like `$today`)
+ * and re-evaluates the rule on page load, so layers gated on
+ * time-relative dates flip across day boundaries without a re-export.
+ *
+ * The static export bakes the export-time evaluation into the page's
+ * inline `display` style; this script only flips it when the *current*
+ * evaluation diverges (i.e. enough days have passed since the export).
+ */
+const VISIBILITY_BOOT_SCRIPT = `
+(function () {
+  if (typeof document === 'undefined') return;
+
+  function resolvePreset(preset) {
+    var now = new Date();
+    var y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+    function dayStart(date) { return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime(); }
+    function dayEnd(date) { return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999).getTime(); }
+    switch (preset) {
+      case '$today':
+        return { start: dayStart(now), end: dayEnd(now) };
+      case '$this_week': {
+        var day = now.getDay();
+        var monday = new Date(y, m, d - ((day + 6) % 7));
+        var sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+        return { start: dayStart(monday), end: dayEnd(sunday) };
+      }
+      case '$this_month':
+        return { start: dayStart(new Date(y, m, 1)), end: dayEnd(new Date(y, m + 1, 0)) };
+      case '$this_year':
+        return { start: dayStart(new Date(y, 0, 1)), end: dayEnd(new Date(y, 11, 31)) };
+      case '$past_week':
+        return { start: dayStart(new Date(y, m, d - 7)), end: dayEnd(now) };
+      case '$past_month':
+        return { start: dayStart(new Date(y, m - 1, d)), end: dayEnd(now) };
+      case '$past_year':
+        return { start: dayStart(new Date(y - 1, m, d)), end: dayEnd(now) };
+      default:
+        return null;
+    }
+  }
+
+  function dayBoundsOfValue(value) {
+    if (!value) return null;
+    if (/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) {
+      var start = Date.parse(value + 'T00:00:00.000Z');
+      var end = Date.parse(value + 'T23:59:59.999Z');
+      if (isNaN(start) || isNaN(end)) return null;
+      return { start: start, end: end };
+    }
+    var ts = Date.parse(value);
+    return isNaN(ts) ? null : { start: ts, end: ts };
+  }
+
+  function resolveCompareValue(operator, value) {
+    // Mirror of resolveDateFilterValue: presets widen to a day range and
+    // map to is_between / is_before / is_after as appropriate.
+    if (typeof value !== 'string' || value.charAt(0) !== '$') {
+      return { operator: operator, value: value, value2: undefined };
+    }
+    var range = resolvePreset(value);
+    if (!range) return { operator: operator, value: value, value2: undefined };
+    var startStr = new Date(range.start).toISOString();
+    var endStr = new Date(range.end).toISOString();
+    switch (operator) {
+      case 'is':
+      case 'is_between':
+        return { operator: 'is_between', value: startStr, value2: endStr };
+      case 'is_before':
+        return { operator: 'is_before', value: startStr };
+      case 'is_after':
+        return { operator: 'is_after', value: endStr };
+      default:
+        return { operator: 'is_between', value: startStr, value2: endStr };
+    }
+  }
+
+  function compareDate(storedValue, operator, filterValue, filterValue2) {
+    if (!storedValue) return false;
+    var valueTs = Date.parse(storedValue);
+    if (isNaN(valueTs)) return false;
+    var bounds = dayBoundsOfValue(filterValue);
+    if (!bounds) return false;
+    switch (operator) {
+      case 'is': return valueTs >= bounds.start && valueTs <= bounds.end;
+      case 'is_before': return valueTs < bounds.start;
+      case 'is_after': return valueTs > bounds.end;
+      case 'is_between':
+        var bounds2 = dayBoundsOfValue(filterValue2);
+        if (!bounds2) return false;
+        return valueTs >= bounds.start && valueTs <= bounds2.end;
+      default: return false;
+    }
+  }
+
+  function evaluateCondition(condition, fieldValues) {
+    if (condition.source !== 'collection_field' || !condition.fieldId) return true;
+    var fieldValue = fieldValues[condition.fieldId];
+    var isPresent = fieldValue !== undefined && fieldValue !== null && fieldValue !== '';
+    var op = condition.operator;
+    if (op === 'is_present' || op === 'is_not_empty') return isPresent;
+    if (op === 'is_empty') return !isPresent;
+    var resolved = resolveCompareValue(op, condition.value);
+    return compareDate(fieldValue || '', resolved.operator, resolved.value, resolved.value2);
+  }
+
+  function evaluateRule(rule, fieldValues) {
+    if (!rule.groups || rule.groups.length === 0) return true;
+    for (var i = 0; i < rule.groups.length; i++) {
+      var group = rule.groups[i];
+      if (!group.conditions || group.conditions.length === 0) continue;
+      var groupResult = false;
+      for (var j = 0; j < group.conditions.length; j++) {
+        if (evaluateCondition(group.conditions[j], fieldValues)) { groupResult = true; break; }
+      }
+      if (!groupResult) return false;
+    }
+    return true;
+  }
+
+  function evaluateAll() {
+    var nodes = document.querySelectorAll('[data-ycode-vis-rule]');
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      try {
+        var payload = JSON.parse(el.getAttribute('data-ycode-vis-rule'));
+        var visible = evaluateRule(payload.rule, payload.fieldValues || {});
+        if (visible) el.style.removeProperty('display');
+        else el.style.display = 'none';
+      } catch (_) { /* malformed payload — leave as-is */ }
+    }
+  }
+
+  function boot() {
+    evaluateAll();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+`.trim()
+
 // =============================================================================
 // Interactions extraction
 // =============================================================================
@@ -480,6 +627,12 @@ export function buildDocument({
     const safe = JSON.stringify(interactions).replace(/<\/(script)/gi, '<\\/$1')
     trailingScripts.push(`<script type="application/json" id="ycode-interactions">${safe}</script>`)
     trailingScripts.push(`<script>${INTERACTIONS_BOOT_SCRIPT}</script>`)
+  }
+  // Only ship the visibility runtime when the rendered body actually
+  // contains a date-preset-driven rule — saves ~1.5 KB on pages that
+  // don't use any dynamic-date visibility.
+  if (bodyHtml.indexOf('data-ycode-vis-rule=') !== -1) {
+    trailingScripts.push(`<script>${VISIBILITY_BOOT_SCRIPT}</script>`)
   }
 
   return [
