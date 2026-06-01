@@ -113,6 +113,18 @@ export function SelectionOverlay({
     const iframeRect = iframeElement.getBoundingClientRect();
     const containerRect = containerElement.getBoundingClientRect();
 
+    // Derive the scale that maps the iframe's INNER coordinate space (where
+    // element rects are measured) to OUTER screen pixels, instead of trusting
+    // zoom/100. The canvas is scaled with CSS `zoom` on a wrapper, and Safari
+    // propagates that zoom into the iframe's own getBoundingClientRect/offset
+    // measurements (so inner rects come back already scaled), while
+    // Chrome/Firefox report inner rects unscaled. Comparing the painted iframe
+    // width to the inner root width — both via getBoundingClientRect — yields
+    // the correct multiplier in every browser (≈zoom in Chrome, ≈1 in Safari)
+    // and prevents the double-scaling that pushed outlines off on Safari.
+    const innerRootWidth = iframeDoc.documentElement.getBoundingClientRect().width;
+    const effectiveScale = innerRootWidth > 0 ? iframeRect.width / innerRootWidth : scale;
+
     // Ensure we have the right number of child outline divs
     while (container.children.length < targetElements.length) {
       const div = document.createElement('div');
@@ -139,10 +151,10 @@ export function SelectionOverlay({
         height = iframeRect.height;
       } else {
         const elementRect = targetElement.getBoundingClientRect();
-        top = iframeRect.top - containerRect.top + (elementRect.top * scale);
-        left = iframeRect.left - containerRect.left + (elementRect.left * scale);
-        width = elementRect.width * scale;
-        height = elementRect.height * scale;
+        top = iframeRect.top - containerRect.top + (elementRect.top * effectiveScale);
+        left = iframeRect.left - containerRect.left + (elementRect.left * effectiveScale);
+        width = elementRect.width * effectiveScale;
+        height = elementRect.height * effectiveScale;
       }
 
       child.className = `absolute ${outlineClass}`;

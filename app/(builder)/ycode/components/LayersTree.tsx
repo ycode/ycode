@@ -224,11 +224,16 @@ function VirtualLayerRow({ nodeId, isRenaming, isLocalizing, translateY, childre
       <div
         style={{
           position: 'absolute',
-          top: 0,
+          // Position rows with `top` rather than `transform: translateY`. A
+          // transformed ancestor becomes the containing block for the row's
+          // `position: sticky` background, which Safari composites incorrectly
+          // in a virtualized list — promoting stale, oversized GPU layers that
+          // paint the blue selection over (and far beyond) the row, hiding the
+          // layer names. Using `top` avoids the transform entirely.
+          top: translateY,
           left: 0,
           width: '100%',
           height: ROW_HEIGHT,
-          transform: `translateY(${translateY}px)`,
         }}
       >
         {children}
@@ -468,7 +473,7 @@ const LayerRow = React.memo(function LayerRow({
     return (
       <div className="relative flex" style={{ width: '100%', minWidth: '100%' }}>
         {/* Background layer - stays fixed */}
-        <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0 pointer-events-none z-0">
           <div
             className={cn(
               'sticky left-0 h-full',
@@ -485,7 +490,7 @@ const LayerRow = React.memo(function LayerRow({
         </div>
 
         {/* Content layer */}
-        <div className="relative flex w-full min-w-full flex-1">
+        <div className="relative z-10 flex w-full min-w-full flex-1">
           {node.depth > 0 && (
             <>
               {Array.from({ length: node.depth }).map((_, i) => (
@@ -565,7 +570,7 @@ const LayerRow = React.memo(function LayerRow({
         style={{ width: '100%', minWidth: '100%' }}
       >
         {/* Background layer - stays fixed when scrolling horizontally */}
-        <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0 pointer-events-none z-0">
           <div
             className={cn(
               'sticky left-0 h-full bg-(--row-bg) group-hover/row:bg-(--row-hover-bg)',
@@ -594,7 +599,7 @@ const LayerRow = React.memo(function LayerRow({
         )}
 
         {/* Content layer - scrolls horizontally */}
-        <div className="relative flex w-full min-w-full flex-1">
+        <div className="relative z-10 flex w-full min-w-full flex-1">
           {/* Vertical connector lines */}
           {node.depth > 0 && (
             <>
@@ -1472,20 +1477,43 @@ export default function LayersTree({
     }
   }, [shouldScrollToSelected]);
 
-  // Virtualizer: discover the nearest scroll-container ancestor
-  const scrollContainerRef = useRef<HTMLElement | null>(null);
+  // Virtualizer: discover the nearest scroll-container ancestor.
+  // Held in state (not a ref) so resolving it triggers a re-render — the
+  // virtualizer only rebinds its scroll element on render, and a ref write
+  // alone leaves it stuck with a null element (blank tree, intermittently
+  // on Safari where the rescue re-render often loses the timing race).
+  const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     let el = wrapperRef.current?.parentElement ?? null;
     while (el) {
       const style = getComputedStyle(el);
-      if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
-        scrollContainerRef.current = el;
-        return;
-      }
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll') break;
       el = el.parentElement;
     }
+    const scroller = el;
+    if (!scroller) return;
+
+    // Bind the virtualizer's scroll element only once it has a measurable
+    // height. The virtualizer reads the viewport height once on bind; if that
+    // read is 0 (Safari before layout settles, or while the Layers tab is
+    // hidden), it computes an empty range and renders no rows — and if the
+    // 0→height ResizeObserver tick is missed (a Safari quirk) the tree stays
+    // blank with just the selection bar. Waiting for a non-zero height makes
+    // the first viewport read reliable across browsers.
+    if (scroller.clientHeight > 0) {
+      setScrollContainer(scroller);
+      return;
+    }
+    const ro = new ResizeObserver(() => {
+      if (scroller.clientHeight > 0) {
+        setScrollContainer(scroller);
+        ro.disconnect();
+      }
+    });
+    ro.observe(scroller);
+    return () => ro.disconnect();
   }, []);
 
   const treeAvailableWidth = leftSidebarWidth - 32;
@@ -1493,7 +1521,7 @@ export default function LayersTree({
 
   const virtualizer = useVirtualizer({
     count: flattenedNodes.length,
-    getScrollElement: () => scrollContainerRef.current,
+    getScrollElement: () => scrollContainer,
     estimateSize: () => ROW_HEIGHT,
     overscan: 20,
   });
@@ -1505,7 +1533,7 @@ export default function LayersTree({
     const idx = flattenedNodes.findIndex(n => n.id === selectedLayerId);
     if (idx < 0) return;
 
-    const scrollEl = scrollContainerRef.current;
+    const scrollEl = scrollContainer;
     if (!scrollEl) {
       virtualizer.scrollToIndex(idx, { align: 'center', behavior: 'smooth' });
       return;
@@ -1555,7 +1583,7 @@ export default function LayersTree({
     }, 100);
 
     return () => clearTimeout(timeout);
-  }, [shouldScrollToSelected, selectedLayerId, flattenedNodes, virtualizer]);
+  }, [shouldScrollToSelected, selectedLayerId, flattenedNodes, virtualizer, scrollContainer]);
 
   const setHoveredLayerIdFromStore = useEditorStore((s) => s.setHoveredLayerId);
 

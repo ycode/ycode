@@ -7,21 +7,44 @@
  */
 
 /**
- * Get the current scale factor applied to the iframe (via its parent wrapper).
- * The zoom is applied as CSS zoom on the wrapper div, not the iframe itself.
+ * Get the scale factor that maps the iframe's INNER coordinate system to OUTER
+ * window pixels. The canvas is scaled with CSS `zoom` on a wrapper div.
+ *
+ * Preferred path derives the scale from geometry — the painted iframe width
+ * divided by the inner root width, both measured via getBoundingClientRect.
+ * This is robust across browsers: Safari propagates the wrapper's `zoom` into
+ * the iframe's own measurements (inner rects come back already scaled), while
+ * Chrome/Firefox report inner rects unscaled. The ratio yields the correct
+ * multiplier in every browser (≈zoom in Chrome, ≈1 in Safari) and avoids the
+ * double-scaling that misaligned canvas overlays/drag math on Safari.
+ *
+ * Falls back to reading CSS `zoom` / `transform: scale()` from an ancestor
+ * wrapper when the iframe document isn't accessible yet (e.g. before load).
  */
 export function getIframeScale(iframe: HTMLIFrameElement): number {
-  const wrapper = iframe.parentElement;
-  // Read from CSS zoom property
-  const zoomValue = wrapper?.style.zoom;
-  if (zoomValue) {
-    const parsed = parseFloat(zoomValue);
-    if (!isNaN(parsed) && parsed > 0) return parsed;
+  const innerRoot = iframe.contentDocument?.documentElement;
+  if (innerRoot) {
+    const innerWidth = innerRoot.getBoundingClientRect().width;
+    const outerWidth = iframe.getBoundingClientRect().width;
+    if (innerWidth > 0 && outerWidth > 0) {
+      return outerWidth / innerWidth;
+    }
   }
-  // Fallback to transform scale
-  const transform = wrapper?.style.transform || '';
-  const match = transform.match(/scale\(([\d.]+)\)/);
-  return match ? parseFloat(match[1]) : 1;
+
+  // Fallback: walk up ancestors for the CSS zoom / transform scale. The zoom
+  // wrapper is not always the direct parent, so we don't stop at the first.
+  let el: HTMLElement | null = iframe.parentElement;
+  while (el) {
+    const zoomValue = el.style.zoom;
+    if (zoomValue) {
+      const parsed = parseFloat(zoomValue);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    const match = (el.style.transform || '').match(/scale\(([\d.]+)\)/);
+    if (match) return parseFloat(match[1]);
+    el = el.parentElement;
+  }
+  return 1;
 }
 
 /**
