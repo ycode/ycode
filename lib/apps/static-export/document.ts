@@ -354,36 +354,40 @@ const VISIBILITY_BOOT_SCRIPT = `
 (function () {
   if (typeof document === 'undefined') return;
 
+  function fmt(date) { return date.toISOString().slice(0, 10); }
+
+  // Mirror of resolveDatePreset: resolve a preset to YYYY-MM-DD bounds using
+  // the same local-component construction the server uses.
   function resolvePreset(preset) {
     var now = new Date();
     var y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
-    function dayStart(date) { return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime(); }
-    function dayEnd(date) { return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999).getTime(); }
     switch (preset) {
       case '$today':
-        return { start: dayStart(now), end: dayEnd(now) };
+        return { start: fmt(new Date(y, m, d)), end: fmt(new Date(y, m, d)) };
       case '$this_week': {
         var day = now.getDay();
         var monday = new Date(y, m, d - ((day + 6) % 7));
         var sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
-        return { start: dayStart(monday), end: dayEnd(sunday) };
+        return { start: fmt(monday), end: fmt(sunday) };
       }
       case '$this_month':
-        return { start: dayStart(new Date(y, m, 1)), end: dayEnd(new Date(y, m + 1, 0)) };
+        return { start: fmt(new Date(y, m, 1)), end: fmt(new Date(y, m + 1, 0)) };
       case '$this_year':
-        return { start: dayStart(new Date(y, 0, 1)), end: dayEnd(new Date(y, 11, 31)) };
+        return { start: fmt(new Date(y, 0, 1)), end: fmt(new Date(y, 11, 31)) };
       case '$past_week':
-        return { start: dayStart(new Date(y, m, d - 7)), end: dayEnd(now) };
+        return { start: fmt(new Date(y, m, d - 7)), end: fmt(new Date(y, m, d)) };
       case '$past_month':
-        return { start: dayStart(new Date(y, m - 1, d)), end: dayEnd(now) };
+        return { start: fmt(new Date(y, m - 1, d)), end: fmt(new Date(y, m, d)) };
       case '$past_year':
-        return { start: dayStart(new Date(y - 1, m, d)), end: dayEnd(now) };
+        return { start: fmt(new Date(y - 1, m, d)), end: fmt(new Date(y, m, d)) };
       default:
         return null;
     }
   }
 
-  function dayBoundsOfValue(value) {
+  // Mirror of dateStringToDayBounds: YYYY-MM-DD spans a full UTC day; any other
+  // parseable value collapses to a single instant.
+  function dayBounds(value) {
     if (!value) return null;
     if (/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) {
       var start = Date.parse(value + 'T00:00:00.000Z');
@@ -395,66 +399,62 @@ const VISIBILITY_BOOT_SCRIPT = `
     return isNaN(ts) ? null : { start: ts, end: ts };
   }
 
+  // Mirror of resolveDateFilterValue.
   function resolveCompareValue(operator, value) {
-    // Mirror of resolveDateFilterValue: presets widen to a day range and
-    // map to is_between / is_before / is_after as appropriate.
     if (typeof value !== 'string' || value.charAt(0) !== '$') {
       return { operator: operator, value: value, value2: undefined };
     }
     var range = resolvePreset(value);
     if (!range) return { operator: operator, value: value, value2: undefined };
-    var startStr = new Date(range.start).toISOString();
-    var endStr = new Date(range.end).toISOString();
     switch (operator) {
       case 'is':
       case 'is_between':
-        return { operator: 'is_between', value: startStr, value2: endStr };
+        return { operator: 'is_between', value: range.start, value2: range.end };
       case 'is_before':
-        return { operator: 'is_before', value: startStr };
+        return { operator: 'is_before', value: range.start };
       case 'is_after':
-        return { operator: 'is_after', value: endStr };
+        return { operator: 'is_after', value: range.end };
       default:
-        return { operator: 'is_between', value: startStr, value2: endStr };
+        return { operator: 'is_between', value: range.start, value2: range.end };
     }
   }
 
+  // Mirror of compareDateFilter.
   function compareDate(storedValue, operator, filterValue, filterValue2) {
-    if (!storedValue) return false;
     var valueTs = Date.parse(storedValue);
     if (isNaN(valueTs)) return false;
-    var bounds = dayBoundsOfValue(filterValue);
+    var bounds = dayBounds(filterValue);
     if (!bounds) return false;
     switch (operator) {
       case 'is': return valueTs >= bounds.start && valueTs <= bounds.end;
       case 'is_before': return valueTs < bounds.start;
       case 'is_after': return valueTs > bounds.end;
       case 'is_between':
-        var bounds2 = dayBoundsOfValue(filterValue2);
+        var bounds2 = dayBounds(filterValue2);
         if (!bounds2) return false;
         return valueTs >= bounds.start && valueTs <= bounds2.end;
       default: return false;
     }
   }
 
-  function evaluateCondition(condition, fieldValues) {
-    if (condition.source !== 'collection_field' || !condition.fieldId) return true;
-    var fieldValue = fieldValues[condition.fieldId];
-    var isPresent = fieldValue !== undefined && fieldValue !== null && fieldValue !== '';
-    var op = condition.operator;
-    if (op === 'is_present' || op === 'is_not_empty') return isPresent;
-    if (op === 'is_empty') return !isPresent;
-    var resolved = resolveCompareValue(op, condition.value);
-    return compareDate(fieldValue || '', resolved.operator, resolved.value, resolved.value2);
+  function evaluateDynamicCondition(condition) {
+    var resolved = resolveCompareValue(condition.operator, condition.value);
+    return compareDate(condition.fieldValue || '', resolved.operator, resolved.value, resolved.value2);
   }
 
-  function evaluateRule(rule, fieldValues) {
-    if (!rule.groups || rule.groups.length === 0) return true;
-    for (var i = 0; i < rule.groups.length; i++) {
-      var group = rule.groups[i];
-      if (!group.conditions || group.conditions.length === 0) continue;
+  // Mirror of evaluateVisibility: conditions OR within a group, groups AND,
+  // empty groups skipped. Non-date conditions carry a baked export-time
+  // result; date-preset conditions re-evaluate against the current date.
+  function evaluateRule(payload) {
+    var groups = (payload && payload.groups) || [];
+    for (var i = 0; i < groups.length; i++) {
+      var conditions = groups[i].conditions || [];
+      if (conditions.length === 0) continue;
       var groupResult = false;
-      for (var j = 0; j < group.conditions.length; j++) {
-        if (evaluateCondition(group.conditions[j], fieldValues)) { groupResult = true; break; }
+      for (var j = 0; j < conditions.length; j++) {
+        var c = conditions[j];
+        var ok = c.dynamic ? evaluateDynamicCondition(c) : !!c.result;
+        if (ok) { groupResult = true; break; }
       }
       if (!groupResult) return false;
     }
@@ -467,21 +467,16 @@ const VISIBILITY_BOOT_SCRIPT = `
       var el = nodes[i];
       try {
         var payload = JSON.parse(el.getAttribute('data-ycode-vis-rule'));
-        var visible = evaluateRule(payload.rule, payload.fieldValues || {});
-        if (visible) el.style.removeProperty('display');
+        if (evaluateRule(payload)) el.style.removeProperty('display');
         else el.style.display = 'none';
       } catch (_) { /* malformed payload — leave as-is */ }
     }
   }
 
-  function boot() {
-    evaluateAll();
-  }
-
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
+    document.addEventListener('DOMContentLoaded', evaluateAll);
   } else {
-    boot();
+    evaluateAll();
   }
 })();
 `.trim()

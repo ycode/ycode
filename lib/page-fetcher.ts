@@ -8,7 +8,7 @@ import { getValuesByItemIds } from '@/lib/repositories/collectionItemValueReposi
 import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepository';
 import { enrichItemsWithCountValues } from '@/lib/repositories/collectionCountRepository';
 import type { Page, PageFolder, PageLayers, Component, ComponentVariable, CollectionItemWithValues, CollectionField, Layer, CollectionPaginationMeta, Translation, Locale } from '@/types';
-import { getCollectionVariable, resolveFieldValue, evaluateVisibility, getLayerHtmlTag, filterDisabledSliderLayers } from '@/lib/layer-utils';
+import { getCollectionVariable, resolveFieldValue, evaluateVisibility, evaluateCondition, getLayerHtmlTag, filterDisabledSliderLayers } from '@/lib/layer-utils';
 import { isFieldVariable, isAssetVariable, createDynamicTextVariable, createDynamicRichTextVariable, createAssetVariable, getDynamicTextContent, getVariableStringValue, getAssetId, resolveDesignStyles } from '@/lib/variable-utils';
 import { buildImageSizes, generateImageSrcset, getOptimizedImageUrl, getAssetProxyUrl, DEFAULT_ASSETS, collectLayerAssetIds, buildSvgDataUrl, parseImageDimension } from '@/lib/asset-utils';
 import { resolveComponents, applyComponentOverrides } from '@/lib/resolve-components';
@@ -40,8 +40,8 @@ import { generateInitialAnimationCSS } from '@/lib/animation-utils';
 import { getMapIframeProps, DEFAULT_MAP_SETTINGS } from '@/lib/map-utils';
 import { getMapboxAccessToken, getGoogleMapsEmbedApiKey } from '@/lib/map-server';
 import { getAssetsByIds } from '@/lib/repositories/assetRepository';
-import { isVirtualAssetField, findDisplayField, hasDynamicDateRule } from '@/lib/collection-field-utils';
-import type { FieldVariable, AssetVariable, DynamicTextVariable, LinkSettings } from '@/types';
+import { isVirtualAssetField, findDisplayField, hasDynamicDateRule, isDynamicDateCondition } from '@/lib/collection-field-utils';
+import type { DynamicVisibilityCondition, FieldVariable, AssetVariable, DynamicTextVariable, LinkSettings } from '@/types';
 import type { DesignColorVariable } from '@/types';
 
 // Cached map provider tokens for synchronous use inside layerToHtml.
@@ -2984,35 +2984,51 @@ function filterByVisibility(
       // Layers whose visibility depends on a date preset ($today, etc.)
       // are kept in the tree even when the export-time evaluation is false,
       // so the static-export client-side runtime can re-evaluate against
-      // the current date and reveal/hide them as time passes. We carry the
-      // rule + the resolved field values along on `_dynamicVisibilityRule`
-      // so layerToHtml can serialize them into a data attribute (gated on
+      // the current date and reveal/hide them as time passes. Only the
+      // date-preset conditions are re-evaluated on the client; every other
+      // condition (text, number, reference, presence, page_collection, …)
+      // is evaluated once here and its result baked in — so the runtime
+      // never has to reimplement the full visibility engine. layerToHtml
+      // serializes this onto a data attribute, gated on
       // pageLinkContext.isStaticExport — live SSR sees the layer present
-      // but display:none, which renders identically to a removed layer).
+      // but display:none, which renders identically to a removed layer.
       if (hasDynamicDateRule(conditionalVisibility)) {
-        const fieldValues: Record<string, string> = {};
-        for (const group of conditionalVisibility.groups) {
-          for (const condition of group.conditions || []) {
-            if (condition.source !== 'collection_field' || !condition.fieldId) continue;
-            const v = resolveFieldFromSources(
-              condition.fieldId,
-              undefined,
-              effectiveCollectionLayerData,
-              pageCollectionData,
-            );
-            fieldValues[condition.fieldId] = String(v ?? '');
-          }
-        }
+        const visibilityContext = {
+          collectionLayerData: effectiveCollectionLayerData,
+          pageCollectionData,
+          pageCollectionCounts,
+          currentItemId: effectiveCurrentItemId,
+          pageCollectionItemId,
+        };
+        const groups = conditionalVisibility.groups.map(group => ({
+          conditions: (group.conditions || []).map((condition): DynamicVisibilityCondition => {
+            if (isDynamicDateCondition(condition) && condition.fieldId) {
+              const v = resolveFieldFromSources(
+                condition.fieldId,
+                undefined,
+                effectiveCollectionLayerData,
+                pageCollectionData,
+              );
+              return {
+                dynamic: true,
+                operator: condition.operator,
+                value: String(condition.value ?? ''),
+                fieldValue: String(v ?? ''),
+              };
+            }
+            return {
+              dynamic: false,
+              result: evaluateCondition(condition, visibilityContext),
+            };
+          }),
+        }));
         return {
           ...layer,
           _dynamicStyles: {
             ...(layer._dynamicStyles || {}),
             display: isVisible ? '' : 'none',
           },
-          _dynamicVisibilityRule: {
-            rule: conditionalVisibility,
-            fieldValues,
-          },
+          _dynamicVisibilityRule: { groups },
           children: layer.children
             ? layer.children
               .map(child => filterLayer(child, effectiveCollectionLayerData, effectiveCurrentItemId))

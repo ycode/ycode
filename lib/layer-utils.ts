@@ -1953,7 +1953,7 @@ export interface VisibilityContext {
  * @param context - The context containing field values and collection counts
  * @returns True if condition is met, false otherwise
  */
-function evaluateCondition(
+export function evaluateCondition(
   condition: import('@/types').VisibilityCondition,
   context: VisibilityContext
 ): boolean {

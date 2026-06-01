@@ -340,10 +340,21 @@ export function resolveDateFilterValue(
 }
 
 /**
- * True if a ConditionalVisibility expression uses any date preset value
- * (e.g. `$today`, `$this_week`). Used by the static export to detect rules
- * that need client-side re-evaluation rather than baking the export-time
- * result into the HTML.
+ * True if a single condition compares a date field against a date preset
+ * (e.g. `$today`). Such conditions resolve relative to the current date, so
+ * the static export re-evaluates them client-side instead of baking the result.
+ */
+export function isDynamicDateCondition(
+  condition: { source?: string; fieldType?: string; value?: string },
+): boolean {
+  if (condition.source !== 'collection_field') return false;
+  if (!condition.fieldType || !isDateFieldType(condition.fieldType as CollectionFieldType)) return false;
+  return isDatePreset(condition.value);
+}
+
+/**
+ * True if a ConditionalVisibility expression contains any date-preset condition.
+ * Used by the static export to detect rules that need client-side re-evaluation.
  */
 export function hasDynamicDateRule(
   visibility:
@@ -355,9 +366,7 @@ export function hasDynamicDateRule(
   for (const group of visibility.groups) {
     if (!group.conditions) continue;
     for (const condition of group.conditions) {
-      if (condition.source !== 'collection_field') continue;
-      if (!condition.fieldType || !isDateFieldType(condition.fieldType as CollectionFieldType)) continue;
-      if (isDatePreset(condition.value)) return true;
+      if (isDynamicDateCondition(condition)) return true;
     }
   }
   return false;
