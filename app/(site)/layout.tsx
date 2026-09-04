@@ -5,15 +5,21 @@ import RootLayoutShell, { defaultMetadata } from '@/components/RootLayoutShell';
 import { fetchGlobalPageSettings } from '@/lib/generate-page-metadata';
 import { renderRootLayoutHeadCode } from '@/lib/parse-head-html';
 import { resolvePageCustomHeadCode } from '@/lib/resolve-page-head-code';
+import { runWithYcodeStamp } from '@/lib/ycode-html-comment';
+
+const ycodeGeneratorMetadata: Metadata = {
+  ...defaultMetadata,
+  other: { generator: 'Ycode' },
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   if (process.env.SKIP_SETUP === 'true') {
-    return defaultMetadata;
+    return ycodeGeneratorMetadata;
   }
 
   try {
     const globalSettings = await fetchGlobalPageSettings();
-    const metadata: Metadata = { ...defaultMetadata };
+    const metadata: Metadata = { ...ycodeGeneratorMetadata };
 
     if (globalSettings.faviconUrl || globalSettings.webClipUrl) {
       metadata.icons = {};
@@ -27,7 +33,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
     return metadata;
   } catch {
-    return defaultMetadata;
+    return ycodeGeneratorMetadata;
   }
 }
 
@@ -37,6 +43,15 @@ export default async function SiteLayout({
   children: React.ReactNode;
 }>) {
   const headElements: React.ReactNode[] = [];
+  let publishedAt: string | null = null;
+
+  // Publish time for the HTML source stamp. Safe without headers() (cloud ISR).
+  try {
+    const globalSettings = await fetchGlobalPageSettings();
+    publishedAt = globalSettings.publishedAt ?? null;
+  } catch {
+    // Supabase not configured — stamp still emits the Made in line
+  }
 
   // Cloud mode uses ISR with explicit tenantId — calling headers() here
   // would force all pages dynamic. Cloud injects custom head code from
@@ -67,9 +82,9 @@ export default async function SiteLayout({
   // Published sites render text with the browser-default (`auto`) font
   // smoothing — matching legacy output. Forcing `antialiased` here would render
   // glyphs thinner/lighter than the original site.
-  return (
+  return runWithYcodeStamp(publishedAt, () => (
     <RootLayoutShell headElements={headElements} bodyClassName="font-sans">
       {children}
     </RootLayoutShell>
-  );
+  ));
 }
