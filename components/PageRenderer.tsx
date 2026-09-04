@@ -562,11 +562,16 @@ export default async function PageRenderer({
     }
   }
 
-  // Extract custom code from page settings and resolve placeholders for dynamic pages
-  const rawPageCustomCodeHead = page.settings?.custom_code?.head || '';
+  // Extract custom code from page settings and resolve placeholders for dynamic pages.
+  // Page head code is injected into <head> by the site layout on self-hosted;
+  // only resolve it here in cloud mode where the layout cannot read the URL.
+  const shouldInjectPageHead = process.env.SKIP_SETUP === 'true';
+  const rawPageCustomCodeHead = shouldInjectPageHead
+    ? (page.settings?.custom_code?.head || '')
+    : '';
   const rawPageCustomCodeBody = page.settings?.custom_code?.body || '';
 
-  const pageCustomCodeHead = page.is_dynamic && collectionItem
+  const pageCustomCodeHead = shouldInjectPageHead && page.is_dynamic && collectionItem
     ? await resolveCustomCodePlaceholders(rawPageCustomCodeHead, collectionItem, collectionFields, usePublishedData)
     : rawPageCustomCodeHead;
 
@@ -759,8 +764,13 @@ export default async function PageRenderer({
         renderRootLayoutHeadCode(globalCustomCodeHead, 'global-head')
       )}
 
-      {/* Page-specific custom head code — React 19 hoists meta/link/style/title to <head> */}
-      {pageCustomCodeHead && renderRootLayoutHeadCode(pageCustomCodeHead, 'page-head')}
+      {/* Page-specific custom head code.
+          Self-hosted: the site layout injects this into the real <head>.
+          Cloud (SKIP_SETUP): the layout cannot read the request URL without
+          breaking ISR, so fall back to rendering here. */}
+      {shouldInjectPageHead && pageCustomCodeHead && (
+        renderRootLayoutHeadCode(pageCustomCodeHead, 'page-head')
+      )}
 
       {/* hreflang alternates for multilingual sites (lowercase attribute) */}
       <HreflangAlternateLinks alternates={hreflangAlternates} />
