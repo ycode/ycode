@@ -31,7 +31,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
     "type-check": "tsc --noEmit",
-    "test": "TS_NODE_TRANSPILE_ONLY=1 TS_NODE_PROJECT=tsconfig.test.json node --test --require ts-node/register --require tsconfig-paths/register lib/layer-style-resolve.test.ts lib/import/adapters/webflow/global-styles.test.ts lib/current-page-filter.test.ts lib/apps/airtable/markdown-to-tiptap.test.ts lib/agent/tools/to-anthropic.test.ts lib/agent/tools/compact-result.test.ts lib/agent/tools/deferred.test.ts",
+    "test": "TS_NODE_TRANSPILE_ONLY=1 TS_NODE_PROJECT=tsconfig.test.json node --test --require ts-node/register --require tsconfig-paths/register lib/layer-style-resolve.test.ts lib/import/adapters/webflow/global-styles.test.ts lib/current-page-filter.test.ts lib/apps/airtable/markdown-to-tiptap.test.ts lib/agent/tools/to-anthropic.test.ts lib/agent/tools/compact-result.test.ts lib/agent/tools/deferred.test.ts lib/page-head-path.test.ts lib/parse-head-html.test.ts",
     "migrate:make": "NODE_NO_WARNINGS=1 knex migrate:make --knexfile knexfile.ts -x ts",
     "migrate:latest": "NODE_NO_WARNINGS=1 knex migrate:latest --knexfile knexfile.ts",
     "migrate:rollback": "NODE_NO_WARNINGS=1 knex migrate:rollback --knexfile knexfile.ts",

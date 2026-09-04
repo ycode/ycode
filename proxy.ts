@@ -56,6 +56,23 @@ function getSupabaseEnvConfig(): { url: string; anonKey: string } | null {
   };
 }
 
+/** Attach x-pathname on the request (readable via headers()) and the response. */
+function withPathname(response: NextResponse, request: NextRequest, pathname: string): NextResponse {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-pathname', pathname);
+  const next = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+  response.cookies.getAll().forEach((cookie) => {
+    next.cookies.set(cookie.name, cookie.value);
+  });
+  response.headers.forEach((value, key) => {
+    next.headers.set(key, value);
+  });
+  next.headers.set('x-pathname', pathname);
+  return next;
+}
+
 function isPublicApiRoute(pathname: string, method: string): boolean {
   // POST to form-submissions is public (website visitors submitting forms)
   if (pathname === '/ycode/api/form-submissions' && method === 'POST') {
@@ -134,9 +151,7 @@ export async function proxy(request: NextRequest) {
   //   - `/ycode/mcp/<token>`: legacy URL-token endpoint (Cursor, Windsurf, etc.)
   //   - `/ycode/mcp`: OAuth Bearer-token endpoint (Claude.ai web, ChatGPT)
   if (pathname === '/ycode/mcp' || pathname.startsWith('/ycode/mcp/')) {
-    const response = NextResponse.next();
-    response.headers.set('x-pathname', pathname);
-    return response;
+    return withPathname(NextResponse.next(), request, pathname);
   }
 
   // Debug escape hatch: skip auth on preview routes when explicitly enabled.
@@ -156,8 +171,7 @@ export async function proxy(request: NextRequest) {
         return authResponse;
       }
       // Authenticated — pass through
-      authResponse.headers.set('x-pathname', pathname);
-      return authResponse;
+      return withPathname(authResponse, request, pathname);
     }
   }
 
@@ -172,17 +186,18 @@ export async function proxy(request: NextRequest) {
     const rewriteUrl = request.nextUrl.clone();
     rewriteUrl.pathname = pathname === '/' ? '/dynamic' : `/dynamic${pathname}`;
 
-    const rewriteResponse = NextResponse.rewrite(rewriteUrl);
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-pathname', pathname);
+    const rewriteResponse = NextResponse.rewrite(rewriteUrl, {
+      request: { headers: requestHeaders },
+    });
     rewriteResponse.headers.set('x-pathname', pathname);
     await applySecurityHeaders(rewriteResponse);
     return rewriteResponse;
   }
 
   // Create response
-  const response = NextResponse.next();
-
-  // Add pathname header for layout to determine dark mode
-  response.headers.set('x-pathname', pathname);
+  const response = withPathname(NextResponse.next(), request, pathname);
 
   // Cache-Control for public pages is configured centrally via next.config.ts headers().
 
