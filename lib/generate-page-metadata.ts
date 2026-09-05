@@ -35,6 +35,7 @@ export interface GlobalPageSettings {
   globalCustomCodeHead?: string | null;
   globalCustomCodeBody?: string | null;
   ycodeBadge?: boolean;
+  publishedAt?: string | null;
   faviconUrl?: string | null;
   faviconMimeType?: string | null;
   webClipUrl?: string | null;
@@ -92,6 +93,7 @@ async function fetchGlobalPageSettingsImpl(isPreview = false): Promise<GlobalPag
     'custom_code_head',
     'custom_code_body',
     'ycode_badge',
+    'published_at',
     'favicon_asset_id',
     'web_clip_asset_id',
   ]);
@@ -139,6 +141,7 @@ async function fetchGlobalPageSettingsImpl(isPreview = false): Promise<GlobalPag
     globalCustomCodeHead: settings.custom_code_head || null,
     globalCustomCodeBody: settings.custom_code_body || null,
     ycodeBadge: settings.ycode_badge ?? true,
+    publishedAt: typeof settings.published_at === 'string' ? settings.published_at : null,
     faviconUrl,
     faviconMimeType,
     webClipUrl,

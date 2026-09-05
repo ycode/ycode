@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { applySecurityHeaders } from '@/lib/security-headers-server';
+import { prefetchYcodePublishedAt } from '@/lib/ycode-html-comment';
 
 /**
  * Public API routes that skip authentication.
@@ -193,6 +194,7 @@ export async function proxy(request: NextRequest) {
     });
     rewriteResponse.headers.set('x-pathname', pathname);
     await applySecurityHeaders(rewriteResponse);
+    await prefetchYcodePublishedAt();
     return rewriteResponse;
   }
 
@@ -204,6 +206,7 @@ export async function proxy(request: NextRequest) {
   // Apply configurable security headers to public pages only (not builder/API).
   if (isPublicPage) {
     await applySecurityHeaders(response);
+    await prefetchYcodePublishedAt();
   }
 
   return response;

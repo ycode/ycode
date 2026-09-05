@@ -13,6 +13,7 @@ import type { PageData } from '@/lib/page-fetcher'
 import type { FontPreload } from '@/lib/font-utils'
 import { getClassesString } from '@/lib/layer-utils'
 import { getEffectiveApplyStyle } from '@/lib/animation-utils'
+import { buildYcodeHtmlComments } from '@/lib/ycode-html-comment'
 
 import type { Layer, Page, PageFolder } from '@/types'
 
@@ -656,6 +657,8 @@ export interface BuildHtmlInput {
    */
   pageCustomCodeHead?: string | null
   pageCustomCodeBody?: string | null
+  /** ISO timestamp of the last publish, used for the HTML source stamp. */
+  publishedAt?: string | null
 }
 
 export function buildDocument({
@@ -674,6 +677,7 @@ export function buildDocument({
   globalCustomCodeBody,
   pageCustomCodeHead,
   pageCustomCodeBody,
+  publishedAt,
 }: BuildHtmlInput): string {
   const seo = extractSeo(page)
   const title = seo.title || page.name
@@ -684,6 +688,7 @@ export function buildDocument({
   const head: string[] = []
   head.push('<meta charset="UTF-8" />')
   head.push('<meta name="viewport" content="width=device-width, initial-scale=1.0" />')
+  head.push('<meta name="generator" content="Ycode" />')
   head.push(`<title>${escapeHtml(title)}</title>`)
   if (description) {
     head.push(`<meta name="description" content="${escapeHtml(description)}" />`)
@@ -754,6 +759,7 @@ export function buildDocument({
 
   return [
     '<!DOCTYPE html>',
+    ...buildYcodeHtmlComments(publishedAt).split('\n'),
     `<html lang="${escapeHtml(lang)}">`,
     '<head>',
     ...head.map((line) => indent + line),

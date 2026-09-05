@@ -148,6 +148,7 @@ export async function exportSite(presetJobId?: string): Promise<ExportJob> {
       fonts,
       globalCustomCodeHead,
       globalCustomCodeBody,
+      publishedAt,
       localeResult,
     ] = await Promise.all([
       client
@@ -160,6 +161,7 @@ export async function exportSite(presetJobId?: string): Promise<ExportJob> {
       getPublishedFonts().catch(() => []),
       getSettingByKey('custom_code_head').catch(() => null),
       getSettingByKey('custom_code_body').catch(() => null),
+      getSettingByKey('published_at').catch(() => null),
       client
         .from('locales')
         .select('*')
@@ -225,6 +227,7 @@ export async function exportSite(presetJobId?: string): Promise<ExportJob> {
             globalCustomCodeBody: globalCustomCodeBody ?? null,
             pageCustomCodeHead: resolved.pageCustomCodeHead,
             pageCustomCodeBody: resolved.pageCustomCodeBody,
+            publishedAt: typeof publishedAt === 'string' ? publishedAt : null,
           })
 
           // Collect Ycode's built-in placeholder URLs referenced from this
