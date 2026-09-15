@@ -13,7 +13,6 @@ import {
   regenerateIdsWithInteractionRemapping,
   canMoveLayer,
   findLayerById,
-  createComponentViaApi,
   replaceLayerWithComponentInstance,
   collectAllSettingsIds,
   generateUniqueSettingsId,
@@ -22,6 +21,7 @@ import {
   resetBindingsForDeletedField,
   cleanLayersForComponentCreation,
 } from '../lib/layer-utils';
+import { createComponentViaApi } from '@/lib/component-api';
 import { generateId } from '../lib/utils';
 import { getDescendantFolderIds, isHomepage, findHomepage, findNextSelection } from '../lib/page-utils';
 import { updateLayersWithStyle, detachStyleFromLayers } from '../lib/layer-style-utils';

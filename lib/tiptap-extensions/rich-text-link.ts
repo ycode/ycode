@@ -325,29 +325,9 @@ export const RichTextLink = Mark.create<RichTextLinkOptions>({
   },
 });
 
-/**
- * Extract LinkSettings from mark attributes.
- * Tolerates the legacy `{ href, linkType }` shape (older MCP-authored links) by
- * mapping a bare `href` into the canonical url variable structure.
- */
-export function getLinkSettingsFromMark(attrs: Record<string, any>): LinkSettings {
-  const legacyUrl = !attrs.url && typeof attrs.href === 'string' && attrs.href
-    ? { type: 'dynamic_text' as const, data: { content: attrs.href } }
-    : undefined;
-
-  return {
-    type: attrs.type || attrs.linkType || 'url',
-    url: attrs.url || legacyUrl || undefined,
-    email: attrs.email || undefined,
-    phone: attrs.phone || undefined,
-    asset: attrs.asset || undefined,
-    page: attrs.page || undefined,
-    field: attrs.field || undefined,
-    anchor_layer_id: attrs.anchor_layer_id || undefined,
-    target: attrs.target || undefined,
-    download: attrs.download || false,
-    rel: attrs.rel || undefined,
-  };
-}
+// Re-export the render-safe attrs mapper (no Tiptap dependency) so existing
+// builder imports keep working while public render paths import it directly
+// from `./link-settings` to avoid bundling `@tiptap/core`.
+export { getLinkSettingsFromMark } from './link-settings';
 
 export default RichTextLink;

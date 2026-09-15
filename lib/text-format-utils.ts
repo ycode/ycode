@@ -7,7 +7,7 @@ import { contentHasBlockElements, hasBlockElementsWithResolver } from '@/lib/tip
 import { applyComponentOverrides, resolveComponents } from '@/lib/resolve-components';
 import type { GlobalFieldMeta } from '@/lib/collection-field-utils';
 import { getDefaultFormatId, isFormatValidForFieldType } from '@/lib/variable-format-utils';
-import { getLinkSettingsFromMark } from '@/lib/tiptap-extensions/rich-text-link';
+import { getLinkSettingsFromMark } from '@/lib/tiptap-extensions/link-settings';
 import HtmlEmbedRenderer from '@/components/HtmlEmbedRenderer';
 
 /**

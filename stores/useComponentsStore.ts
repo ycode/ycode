@@ -7,12 +7,12 @@
 
 import { create } from 'zustand';
 import {
-  createComponentViaApi,
   replaceLayerWithComponentInstance,
   findLayerById,
   cleanLayersForComponentCreation,
   regenerateIdsWithInteractionRemapping,
 } from '@/lib/layer-utils';
+import { createComponentViaApi } from '@/lib/component-api';
 import { detachStyleFromLayers, updateLayersWithStyle } from '@/lib/layer-style-utils';
 import { scheduleIdle } from '@/lib/schedule-idle';
 import { generateId } from '@/lib/utils';
