@@ -9,8 +9,10 @@ import {
   SETTING_AGENT_ENABLED,
   SETTING_ENABLED_MODELS,
   SETTING_MODEL,
+  SETTING_OLLAMA_BASE_URL,
+  SETTING_OLLAMA_MODEL,
 } from '@/lib/agent/config';
-import { AGENT_MODELS, AGENT_PROVIDERS } from '@/lib/agent/models';
+import { AGENT_PROVIDERS, resolveOllamaBaseUrl } from '@/lib/agent/models';
 import { getAuthUser } from '@/lib/supabase-auth';
 import { getSettingsByKeys, setSettings } from '@/lib/repositories/settingsRepository';
 
@@ -38,7 +40,7 @@ export async function GET() {
   }
 }
 
-const providerIds = ['anthropic', 'openai', 'google', 'xai'] as const;
+const providerIds = ['anthropic', 'openai', 'google', 'xai', 'ollama'] as const;
 
 const scopeSchema = z.enum(['all', 'personal']);
 
@@ -50,6 +52,7 @@ const putSchema = z.object({
       openai: z.string().nullish(),
       google: z.string().nullish(),
       xai: z.string().nullish(),
+      ollama: z.string().nullish(),
     })
     .partial()
     .optional(),
@@ -61,12 +64,16 @@ const putSchema = z.object({
       openai: scopeSchema.optional(),
       google: scopeSchema.optional(),
       xai: scopeSchema.optional(),
+      ollama: scopeSchema.optional(),
     })
     .partial()
     .optional(),
   model: z.string().optional(),
   enabledModels: z.array(z.string()).optional(),
   agentEnabled: z.boolean().optional(),
+  // Ollama endpoint + model id. An empty string clears the stored value.
+  ollamaBaseUrl: z.string().optional(),
+  ollamaModel: z.string().optional(),
 });
 
 /**
@@ -90,6 +97,9 @@ export async function PUT(request: NextRequest) {
     }
 
     const updates: Record<string, unknown> = {};
+    // Default-model change staged for validation against the config this request
+    // will produce (see the post-Ollama resolve below).
+    let pendingModel: string | null = null;
 
     // Current stored rows (shared + this user's personal) so key writes,
     // deletes, and scope moves can target the right row.
@@ -149,26 +159,84 @@ export async function PUT(request: NextRequest) {
     }
 
     if (body.model !== undefined) {
-      if (!AGENT_MODELS.some((option) => option.id === body.model)) {
-        return NextResponse.json({ error: 'Unknown model' }, { status: 400 });
-      }
-      updates[SETTING_MODEL] = body.model;
+      // The allowlist is the project's own model options, so a configured
+      // Ollama model id is selectable as the default like any vendor model.
+      // Validated below, once, against the config this request will produce.
+      pendingModel = body.model;
     }
 
+    // Ollama endpoint + model id. Both are stored raw (the endpoint normalized
+    // to an OpenAI-compatible base URL) and read back through resolveAgentConfig.
+    if (body.ollamaBaseUrl !== undefined) {
+      const raw = body.ollamaBaseUrl.trim();
+      if (raw.length === 0) {
+        updates[SETTING_OLLAMA_BASE_URL] = null;
+      } else {
+        const normalized = resolveOllamaBaseUrl(raw);
+        if (!normalized) {
+          return NextResponse.json(
+            { error: 'Enter a valid http(s) endpoint, e.g. http://localhost:11434' },
+            { status: 400 },
+          );
+        }
+        updates[SETTING_OLLAMA_BASE_URL] = normalized;
+      }
+    }
+
+    if (body.ollamaModel !== undefined) {
+      const trimmed = body.ollamaModel.trim();
+      if (trimmed.length > 0 && !/^[A-Za-z0-9._\-/:]+$/.test(trimmed)) {
+        return NextResponse.json(
+          { error: 'Enter a valid Ollama model name, e.g. gpt-oss:120b' },
+          { status: 400 },
+        );
+      }
+      updates[SETTING_OLLAMA_MODEL] = trimmed.length > 0 ? trimmed : null;
+    }
+
+    // Enablement is validated after the Ollama settings are applied below, so a
+    // model list that only references a model being configured in the same
+    // request is accepted.
+    let enablement: string[] | null = null;
     if (body.enabledModels !== undefined) {
-      const enabled = sanitizeEnabledModels(body.enabledModels);
-      if (enabled.length !== body.enabledModels.length) {
+      enablement = body.enabledModels;
+    }
+
+    if (body.agentEnabled !== undefined) {
+      // Store only the opt-out; `null` deletes the row so "on" stays the default.
+      updates[SETTING_AGENT_ENABLED] = body.agentEnabled ? null : false;
+    }
+
+    // Enablement and the default model are validated together, after the Ollama
+    // settings above are accounted for, so a request that configures an Ollama
+    // model AND enables/selects it in the same call is accepted. One resolve
+    // covers both — the previous two-call version re-read the stored settings
+    // and never saw the values this request is writing.
+    const nextConfig = await resolveAgentConfig(userId, {
+      [SETTING_OLLAMA_BASE_URL]: updates[SETTING_OLLAMA_BASE_URL],
+      [SETTING_OLLAMA_MODEL]: updates[SETTING_OLLAMA_MODEL],
+    });
+    const known = nextConfig.modelOptions.map((option) => option.id);
+
+    if (pendingModel !== null) {
+      if (!known.includes(pendingModel)) {
+        return NextResponse.json({ error: 'Unknown model' }, { status: 400 });
+      }
+      updates[SETTING_MODEL] = pendingModel;
+    }
+
+    if (enablement !== null) {
+      const enabled = sanitizeEnabledModels(
+        enablement.filter((id) => known.includes(id)),
+        nextConfig.ollamaModel,
+      );
+      if (enabled.length !== enablement.length) {
         return NextResponse.json(
           { error: 'At least one valid model must be enabled' },
           { status: 400 }
         );
       }
       updates[SETTING_ENABLED_MODELS] = enabled;
-    }
-
-    if (body.agentEnabled !== undefined) {
-      // Store only the opt-out; `null` deletes the row so "on" stays the default.
-      updates[SETTING_AGENT_ENABLED] = body.agentEnabled ? null : false;
     }
 
     if (Object.keys(updates).length > 0) {
@@ -208,14 +276,24 @@ function toStatusPayload(config: ResolvedAgentConfig) {
     source: 'setting' | 'env' | null;
     scope: 'all' | 'personal' | null;
     maskedKey: string | null;
+    baseUrl?: string | null;
+    model?: string | null;
   }>;
   for (const provider of AGENT_PROVIDERS) {
     const resolved = config.providers[provider.id];
+    // A self-hosted endpoint with no key is still a working connection, so
+    // Ollama reports "configured" off its endpoint + model instead.
+    const configured = provider.id === 'ollama'
+      ? config.ollamaBaseUrl !== null && config.ollamaModel !== null
+      : resolved.apiKey !== null;
     providers[provider.id] = {
-      configured: resolved.apiKey !== null,
+      configured,
       source: resolved.source,
       scope: resolved.scope,
       maskedKey: resolved.apiKey ? maskKey(resolved.apiKey) : null,
+      ...(provider.id === 'ollama'
+        ? { baseUrl: config.ollamaBaseUrl, model: config.ollamaModel }
+        : {}),
     };
   }
   return {
@@ -224,6 +302,9 @@ function toStatusPayload(config: ResolvedAgentConfig) {
     providers,
     model: config.model,
     enabledModels: config.enabledModels,
+    modelOptions: config.modelOptions,
+    ollamaBaseUrl: config.ollamaBaseUrl,
+    ollamaModel: config.ollamaModel,
   };
 }
 

@@ -524,12 +524,13 @@ function ModelPicker({
   onChange: (model: string | null) => void;
 }) {
   // Models can be restricted in Settings → Agent, and a model is only usable
-  // when its provider has an API key; fall back to the non-legacy allowlist
-  // until the status has loaded (legacy models need the stored allowlist to
-  // confirm the project still has them).
+  // when its provider has a usable configuration; fall back to the non-legacy
+  // shipped allowlist until the status has loaded (legacy models need the stored
+  // allowlist to confirm the project still has them).
   const agentStatus = useAgentSettingsStore((s) => s.status);
+  const allModels = agentStatus?.modelOptions ?? AGENT_MODELS;
   const options = agentStatus
-    ? AGENT_MODELS.filter(
+    ? allModels.filter(
       (option) =>
         agentStatus.enabledModels.includes(option.id) &&
           agentStatus.providers[option.provider]?.configured,

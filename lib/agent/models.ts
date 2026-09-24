@@ -6,7 +6,48 @@
  * still resolved server-side from settings/env in `lib/agent/config.ts`.
  */
 
-export type AgentProviderId = 'anthropic' | 'openai' | 'google' | 'xai';
+export type AgentProviderId = 'anthropic' | 'openai' | 'google' | 'xai' | 'ollama';
+
+/**
+ * Default Ollama endpoint. Ollama Cloud speaks the OpenAI Chat Completions API
+ * at `/v1`, so the base URL stored here always includes the version prefix.
+ */
+export const OLLAMA_DEFAULT_BASE_URL = 'https://ollama.com/v1';
+
+/** Placeholder shown when no base URL is stored yet. */
+export const OLLAMA_DEFAULT_BASE_URL_LABEL = 'https://ollama.com';
+
+/**
+ * Normalize a user-entered Ollama endpoint into an OpenAI-compatible base URL.
+ *
+ * Users type what they know — "ollama.com", "http://localhost:11434", or a full
+ * "/v1" URL — so accept all of them and append `/v1` when it's missing (Ollama's
+ * OpenAI-compatible routes live under it). A blank value falls back to Ollama
+ * Cloud. Anything that isn't http(s) is rejected so a typo can't turn into a
+ * relative fetch that silently resolves against the Ycode origin.
+ */
+export function resolveOllamaBaseUrl(value: unknown): string | null {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) return OLLAMA_DEFAULT_BASE_URL;
+
+  // Bare hosts ("ollama.com", "localhost:11434") get an https:// prefix; plain
+  // http:// is still honored for a LAN box that has no TLS.
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(withScheme);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+
+  const path = parsed.pathname.replace(/\/+$/, '');
+  parsed.pathname = path.endsWith('/v1') ? path : `${path}/v1`;
+  parsed.search = '';
+  parsed.hash = '';
+  return parsed.toString().replace(/\/$/, '');
+}
 
 export interface AgentProviderOption {
   id: AgentProviderId;
@@ -18,6 +59,14 @@ export interface AgentProviderOption {
   /** Where the user creates an API key. */
   consoleUrl: string;
   consoleLabel: string;
+  /** True when the provider works without an API key (self-hosted Ollama has
+   * no auth), so the connect form must not require one. */
+  keyOptional?: boolean;
+  /** Provider serves models from a user-set endpoint rather than a fixed
+   * vendor host, so the settings UI must collect a base URL. */
+  usesBaseUrl?: boolean;
+  /** Endpoint used when the user hasn't stored one. */
+  defaultBaseUrl?: string;
 }
 
 export const AGENT_PROVIDERS: AgentProviderOption[] = [
@@ -53,6 +102,17 @@ export const AGENT_PROVIDERS: AgentProviderOption[] = [
     consoleUrl: 'https://console.x.ai',
     consoleLabel: 'xAI Console',
   },
+  {
+    id: 'ollama',
+    label: 'Ollama',
+    envVar: 'OLLAMA_API_KEY',
+    keyPlaceholder: 'Key (Ollama Cloud only)',
+    consoleUrl: 'https://ollama.com/settings/keys',
+    consoleLabel: 'Ollama account',
+    keyOptional: true,
+    usesBaseUrl: true,
+    defaultBaseUrl: OLLAMA_DEFAULT_BASE_URL,
+  },
 ];
 
 export interface AgentModelOption {
@@ -87,6 +147,38 @@ export const AGENT_MODELS: AgentModelOption[] = [
 export const DEFAULT_AGENT_MODEL = 'claude-opus-5';
 
 /**
+ * Model id configured for the project's endpoint, or null.
+ *
+ * Ollama serves arbitrary model tags ("gpt-oss:120b", "llama3.2:3b"), so unlike
+ * the other providers there is no shipped model list to pick from: each project
+ * stores one model id and the agent runs that.
+ *
+ * This is deliberately NOT module state. An earlier design kept the id in a
+ * module-level variable written by `resolveAgentConfig` and read later by
+ * `providerOfModel`; on a shared server two concurrent requests from different
+ * projects interleave between that write and read, so the in-flight request
+ * resolved its own model id against a neighbour's — `providerOfModel` returned
+ * null and the request fell through to "no API key configured" or silently
+ * swapped to the default model. Resolution is now explicit: callers pass the
+ * project's model options (from `ResolvedAgentConfig.modelOptions`) into
+ * `providerOfModelFrom` / `isAllowedModelFrom`.
+ */
+
+/** Model option for a project-configured Ollama model id. */
+export function ollamaModelOption(id: string): AgentModelOption {
+  return { id, label: id, provider: 'ollama' };
+}
+
+/**
+ * Model options a project can run: the shipped allowlist plus the project's
+ * configured Ollama model, when it has one. Settings pages and the model picker
+ * render from this so a configured Ollama model is selectable like any other.
+ */
+export function agentModelOptions(ollamaModelId?: string | null): AgentModelOption[] {
+  return ollamaModelId ? [...AGENT_MODELS, ollamaModelOption(ollamaModelId)] : AGENT_MODELS;
+}
+
+/**
  * Models the removed automatic self-review pass ran on, per provider. Kept so
  * providerOfModel still resolves these ids — they appear on assistant turns in
  * older persisted chats (and in stored usage records).
@@ -96,22 +188,52 @@ const LEGACY_REVIEW_MODEL_BY_PROVIDER: Record<AgentProviderId, string> = {
   openai: 'gpt-5-mini',
   google: 'gemini-3.5-flash',
   xai: 'grok-4.3',
+  // The agent's internal review pass never ran on a hosted Ollama model.
+  ollama: '',
 };
 
 /** Which provider serves a model id, or null for unknown/custom models.
- * Resolves picker models (AGENT_MODELS) and the legacy review-only ids found
- * in older chats, so key/provider checks work for both. */
+ * Resolves picker models (AGENT_MODELS) and the legacy review-only ids found in
+ * older chats. A project's own Ollama model is NOT resolvable here — it is
+ * project-specific, so pass the project's `modelOptions` to
+ * `providerOfModelFrom` instead. */
 export function providerOfModel(id: string): AgentProviderId | null {
   const pickerProvider = AGENT_MODELS.find((model) => model.id === id)?.provider;
   if (pickerProvider) return pickerProvider;
   const reviewEntry = (Object.entries(LEGACY_REVIEW_MODEL_BY_PROVIDER) as Array<[AgentProviderId, string]>)
-    .find(([, modelId]) => modelId === id);
+    .find(([, modelId]) => modelId !== '' && modelId === id);
   return reviewEntry ? reviewEntry[0] : null;
 }
 
-/** Whether a requested model id is one the agent is allowed to use. */
-export function isAllowedModel(id: string): boolean {
-  return AGENT_MODELS.some((model) => model.id === id);
+/**
+ * Which provider serves a model id, resolved against the caller's own model
+ * options first.
+ *
+ * Every caller that holds a `ResolvedAgentConfig` (the chat route, the settings
+ * route) must use this: the project's Ollama model id only exists in
+ * `modelOptions`, and resolving it from shared state instead is what made two
+ * concurrent requests clobber each other. Client components use this too, with
+ * the options they received in the settings status.
+ */
+export function providerOfModelFrom(
+  options: readonly AgentModelOption[],
+  id: string,
+): AgentProviderId | null {
+  return options.find((option) => option.id === id)?.provider ?? providerOfModel(id);
+}
+
+/**
+ * Whether a requested model id is one this project is allowed to use.
+ *
+ * `options` is the project's own option list (`ResolvedAgentConfig.modelOptions`)
+ * so a configured Ollama model is allowed for the project that configured it and
+ * for no one else. Omitting it falls back to the shipped allowlist only.
+ */
+export function isAllowedModelFrom(
+  options: readonly AgentModelOption[],
+  id: string,
+): boolean {
+  return options.some((option) => option.id === id) || providerOfModel(id) !== null;
 }
 
 /** USD per million tokens, split by how Anthropic bills each token class. */

@@ -128,8 +128,21 @@ export async function POST(request: Request): Promise<Response> {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const closed = { value: false };
       const send = (event: unknown) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        // The browser can drop the connection mid-run (reload, network blip,
+        // or the user giving up). Once the client is gone the controller is
+        // closed; enqueueing into it throws ERR_INVALID_STATE and, because it
+        // fires inside the runAgent try/catch, a mid-run enqueue failure gets
+        // reported to nobody as a bogus "Agent run failed: Controller is
+        // already closed". Swallow it: the run keeps going for its own
+        // bookkeeping, events for a dead reader are simply dropped.
+        if (closed.value) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        } catch {
+          closed.value = true;
+        }
       };
 
       try {
@@ -154,8 +167,14 @@ export async function POST(request: Request): Promise<Response> {
         console.error('[AI chat] Agent run failed:', error);
         send({ type: 'error', message: humanizeProviderError(error) });
       } finally {
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-        controller.close();
+        if (!closed.value) {
+          try {
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          } catch {
+            // reader gone; nothing to deliver
+          }
+          controller.close();
+        }
       }
     },
     cancel() {

@@ -26,7 +26,7 @@ import { Icon } from '@/components/ui/icon';
 import type { IconProps } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
-import { AGENT_PROVIDERS, providerOfModel } from '@/lib/agent/models';
+import { AGENT_MODELS, AGENT_PROVIDERS, providerOfModelFrom } from '@/lib/agent/models';
 import { getLayerName } from '@/lib/layer-display-utils';
 import { findLayerById } from '@/lib/layer-utils';
 import { cn } from '@/lib/utils';
@@ -444,7 +444,7 @@ export default function AiChatPanel({ embedded = false }: AiChatPanelProps) {
   // default so the request isn't silently remapped server-side.
   useEffect(() => {
     if (!agentStatus || !model) return;
-    const provider = providerOfModel(model);
+    const provider = providerOfModelFrom(agentStatus.modelOptions ?? AGENT_MODELS, model);
     const usable =
       agentStatus.enabledModels.includes(model) &&
       provider !== null &&
@@ -756,6 +756,7 @@ const PROVIDER_SHORT_LABELS: Record<AgentProviderId, string> = {
   openai: 'OpenAI',
   google: 'Google Gemini',
   xai: 'Grok',
+  ollama: 'Ollama',
 };
 
 /** Brand icons keyed by provider (registered in the Icon component). */
@@ -764,6 +765,7 @@ const PROVIDER_ICONS: Record<AgentProviderId, IconProps['name']> = {
   openai: 'openai',
   google: 'gemini',
   xai: 'grok',
+  ollama: 'ollama',
 };
 
 /** Shown when no AI provider is configured: offers a one-click setup dialog for
@@ -827,25 +829,29 @@ function ConnectAgentState() {
               </DialogTitle>
             </DialogHeader>
             <div className="border-t -mt-3 pt-4 flex flex-col gap-5">
-              <div className="flex items-start gap-4">
-                <div className="flex-1 min-w-0">
-                  <FieldLabel
-                    htmlFor={`${activeProvider.id}-panel-connect-scope`}
-                    className="mb-1"
-                  >
-                    Available to all users on this project
-                  </FieldLabel>
-                  <FieldDescription className="mb-0">
-                    When off, the key works only for you — other users can connect
-                    their own {activeProvider.label} key.
-                  </FieldDescription>
+              {/* Ollama is configured by endpoint + model (and usually no key),
+                  so the key-availability switch doesn't apply to it. */}
+              {activeProvider.keyOptional ? null : (
+                <div className="flex items-start gap-4">
+                  <div className="flex-1 min-w-0">
+                    <FieldLabel
+                      htmlFor={`${activeProvider.id}-panel-connect-scope`}
+                      className="mb-1"
+                    >
+                      Available to all users on this project
+                    </FieldLabel>
+                    <FieldDescription className="mb-0">
+                      When off, the key works only for you — other users can connect
+                      their own {activeProvider.label} key.
+                    </FieldDescription>
+                  </div>
+                  <Switch
+                    id={`${activeProvider.id}-panel-connect-scope`}
+                    checked={connectForAll}
+                    onCheckedChange={setConnectForAll}
+                  />
                 </div>
-                <Switch
-                  id={`${activeProvider.id}-panel-connect-scope`}
-                  checked={connectForAll}
-                  onCheckedChange={setConnectForAll}
-                />
-              </div>
+              )}
               <AgentKeyForm
                 provider={activeProvider}
                 submitLabel="Connect"
