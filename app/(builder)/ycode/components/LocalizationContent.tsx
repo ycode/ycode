@@ -98,15 +98,22 @@ export default function LocalizationContent({ children }: LocalizationContentPro
   /**
    * Build CMS variable field groups for a translation item using the same
    * resolution rules as the canvas right-sidebar: walks parent collection
-   * layers and merges page-bound collection fields. Returns `undefined` for
-   * non-layer items (slug, SEO, CMS field translations) so the picker stays
-   * hidden where the canvas wouldn't show one either.
+   * layers and merges page-bound collection fields. Custom code items resolve
+   * against the page's own collection, matching the page settings editor.
+   * Returns `undefined` for the rest (slug, SEO, CMS field translations) so the
+   * picker stays hidden where the canvas wouldn't show one either.
    */
   const buildFieldGroupsForTranslationItem = (
     item: TranslatableItem,
     layers: Layer[],
     page?: Page | null,
   ) => {
+    if (item.content_key.startsWith('custom_code:')) {
+      const collectionId = page?.is_dynamic ? page.settings?.cms?.collection_id : null;
+      const fields = collectionId ? allFields[collectionId] : undefined;
+      return fields?.length ? [{ fields }] : undefined;
+    }
+
     const match = item.content_key.match(/^layer:([^:]+):/);
     if (!match) return undefined;
     const layerId = match[1];

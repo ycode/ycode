@@ -5,6 +5,7 @@ import { CodeEditor } from '@/components/ui/code-editor';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Separator } from '@/components/ui/separator';
+import CodeEditorFieldVariables from './CodeEditorFieldVariables';
 import RichTextEditor from './RichTextEditor';
 import RichTextEditorSheet from './RichTextEditorSheet';
 import type { FieldGroup } from './CollectionFieldSelector';
@@ -77,6 +78,7 @@ export default function TranslationRow({
   const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false);
   const [isRichTextSheetOpen, setIsRichTextSheetOpen] = useState(false);
   const richTextValueRef = useRef<string | null>(null);
+  const codeTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [pendingCompletions, setPendingCompletions] = useState<Record<string, boolean | null>>({});
   const [isUpdatingCompletion, setIsUpdatingCompletion] = useState(false);
 
@@ -657,8 +659,12 @@ export default function TranslationRow({
               </div>
             ) : isCode ? (
               // Blur bubbles from the inner textarea, so the wrapper commits the edit
-              <div onBlur={() => handleTranslationBlur(translationValue)}>
+              <div
+                className="relative"
+                onBlur={() => handleTranslationBlur(translationValue)}
+              >
                 <CodeEditor
+                  textareaRef={codeTextareaRef}
                   value={translationValue}
                   onValueChange={handleTranslationChange}
                   placeholder={
@@ -667,6 +673,14 @@ export default function TranslationRow({
                       : 'Enter translation...'
                   }
                   className="max-h-64"
+                />
+                <CodeEditorFieldVariables
+                  fieldGroups={fieldGroups}
+                  allFields={allFields}
+                  collections={collections}
+                  textareaRef={codeTextareaRef}
+                  value={translationValue}
+                  onValueChange={handleTranslationChange}
                 />
               </div>
             ) : openInSheet ? (
