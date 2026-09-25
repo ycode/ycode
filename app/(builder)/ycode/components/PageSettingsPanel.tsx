@@ -32,12 +32,6 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu';
-import { CollectionFieldSelector } from './CollectionFieldSelector';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -53,7 +47,8 @@ import { useEditorStore } from '@/stores/useEditorStore';
 import RichTextEditor from './RichTextEditor';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { getFieldIcon, IMAGE_FIELD_TYPES, RICH_TEXT_FIELD_TYPES, DISPLAYABLE_FIELD_TYPES, type FieldGroup as CollectionFieldGroup } from '@/lib/collection-field-utils';
+import { getFieldIcon, IMAGE_FIELD_TYPES, RICH_TEXT_FIELD_TYPES, type FieldGroup as CollectionFieldGroup } from '@/lib/collection-field-utils';
+import CodeEditorFieldVariables from './CodeEditorFieldVariables';
 
 export interface PageSettingsPanelHandle {
   checkUnsavedChanges: () => Promise<boolean>;
@@ -299,93 +294,10 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
   }, [collectionFields]);
 
   // Field group feeding the variable selector (reference fields expand into submenus)
-  const customCodeFieldGroups = useMemo<CollectionFieldGroup[]>(() => {
-    if (collectionFields.length === 0) return [];
+  const customCodeFieldGroups = useMemo<CollectionFieldGroup[] | undefined>(() => {
+    if (!isDynamicPage || collectionFields.length === 0) return undefined;
     return [{ fields: collectionFields }];
-  }, [collectionFields]);
-
-  // Build a {{Field}} / {{Reference.Field}} token from a selected field + relationship path (field IDs)
-  const buildFieldTokenPath = useCallback((fieldId: string, relationshipPath: string[]): string | null => {
-    let currentField: CollectionField | undefined = collectionFields.find(field => field.id === fieldId);
-    if (!currentField) return null;
-
-    const names = [currentField.name];
-    for (const relationshipFieldId of relationshipPath) {
-      const referencedCollectionId: string | null = currentField.reference_collection_id;
-      if (!referencedCollectionId) return null;
-      const nextField: CollectionField | undefined = (fields[referencedCollectionId] || []).find(field => field.id === relationshipFieldId);
-      if (!nextField) return null;
-      names.push(nextField.name);
-      currentField = nextField;
-    }
-
-    return names.join('.');
-  }, [collectionFields, fields]);
-
-  // Helper function to insert text at cursor position in textarea
-  const insertTextAtCursor = useCallback((textarea: HTMLTextAreaElement | null, text: string, setValue: (value: string) => void, currentValue: string) => {
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const newValue = currentValue.substring(0, start) + text + currentValue.substring(end);
-
-    setValue(newValue);
-
-    // Set cursor position after inserted text
-    setTimeout(() => {
-      const newCursorPos = start + text.length;
-      textarea.setSelectionRange(newCursorPos, newCursorPos);
-      textarea.focus();
-    }, 0);
-  }, []);
-
-  // Handle field variable insertion
-  const handleFieldVariableInsert = useCallback((fieldName: string, textareaRef: React.RefObject<HTMLTextAreaElement | null>, setValue: (value: string) => void, currentValue: string) => {
-    const variableText = `{{${fieldName}}}`;
-    insertTextAtCursor(textareaRef.current, variableText, setValue, currentValue);
-  }, [insertTextAtCursor]);
-
-  // Reusable field variable select component
-  const renderCustomCodeFieldSelector = useCallback(({
-    textareaRef,
-    value,
-    setValue,
-  }: {
-    textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-    value: string;
-    setValue: (value: string) => void;
-  }) => {
-    if (!isDynamicPage || collectionFields.length === 0) return null;
-
-    return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-6 w-6 p-0"
-          >
-            <Icon name="database" className="size-2.5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56 max-h-none!">
-          <CollectionFieldSelector
-            fieldGroups={customCodeFieldGroups}
-            allFields={fields}
-            collections={collections}
-            allowedTypes={DISPLAYABLE_FIELD_TYPES}
-            onSelect={(fieldId, relationshipPath) => {
-              const tokenPath = buildFieldTokenPath(fieldId, relationshipPath);
-              if (tokenPath) {
-                handleFieldVariableInsert(tokenPath, textareaRef, setValue, value);
-              }
-            }}
-          />
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
-  }, [isDynamicPage, collectionFields, customCodeFieldGroups, fields, collections, buildFieldTokenPath, handleFieldVariableInsert]);
+  }, [isDynamicPage, collectionFields]);
 
   // Check if there's a URL conflict warning: dynamic page + non-index pages in same folder
   const urlConflictWarning = useMemo(() => {
@@ -1899,17 +1811,14 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
                           placeholder="<script>...</script>"
                           className="min-h-48 w-full"
                         />
-                        {isDynamicPage && (
-                          <div className="absolute top-1 right-1 pointer-events-none">
-                            <div className="pointer-events-auto">
-                              {renderCustomCodeFieldSelector({
-                                textareaRef: customCodeHeadRef,
-                                value: customCodeHead,
-                                setValue: setCustomCodeHead,
-                              })}
-                            </div>
-                          </div>
-                        )}
+                        <CodeEditorFieldVariables
+                          fieldGroups={customCodeFieldGroups}
+                          allFields={fields}
+                          collections={collections}
+                          textareaRef={customCodeHeadRef}
+                          value={customCodeHead}
+                          onValueChange={setCustomCodeHead}
+                        />
                       </div>
                     </Field>
 
@@ -1927,17 +1836,14 @@ const PageSettingsPanel = React.forwardRef<PageSettingsPanelHandle, PageSettings
                           className="min-h-48 w-full"
                         />
 
-                        {isDynamicPage && (
-                          <div className="absolute top-1 right-1 pointer-events-none">
-                            <div className="pointer-events-auto">
-                              {renderCustomCodeFieldSelector({
-                                textareaRef: customCodeBodyRef,
-                                value: customCodeBody,
-                                setValue: setCustomCodeBody,
-                              })}
-                            </div>
-                          </div>
-                        )}
+                        <CodeEditorFieldVariables
+                          fieldGroups={customCodeFieldGroups}
+                          allFields={fields}
+                          collections={collections}
+                          textareaRef={customCodeBodyRef}
+                          value={customCodeBody}
+                          onValueChange={setCustomCodeBody}
+                        />
                       </div>
                     </Field>
                   </FieldGroup>

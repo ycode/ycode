@@ -1143,6 +1143,34 @@ export function getEncodedFieldValue(fieldId: string | null | undefined, fieldGr
 }
 
 /**
+ * Resolve a selected field plus its relationship path (both field IDs) into a
+ * `Field` / `Reference.Field` token name, as used by `{{...}}` placeholders.
+ * Returns null when any hop in the path can't be resolved.
+ */
+export function buildFieldTokenPath(
+  fieldId: string,
+  relationshipPath: string[],
+  rootFields: CollectionField[],
+  fieldsByCollectionId: Record<string, CollectionField[]>,
+): string | null {
+  let currentField: CollectionField | undefined = rootFields.find(field => field.id === fieldId);
+  if (!currentField) return null;
+
+  const names = [currentField.name];
+  for (const relationshipFieldId of relationshipPath) {
+    const referencedCollectionId: string | null = currentField.reference_collection_id;
+    if (!referencedCollectionId) return null;
+    const nextField: CollectionField | undefined = (fieldsByCollectionId[referencedCollectionId] || [])
+      .find(field => field.id === relationshipFieldId);
+    if (!nextField) return null;
+    names.push(nextField.name);
+    currentField = nextField;
+  }
+
+  return names.join('.');
+}
+
+/**
  * Build field groups for a specific layer by resolving its parent collection context.
  * Encapsulates the repeated pattern of finding parent collections, extracting
  * multi-asset context, and calling buildFieldGroups.

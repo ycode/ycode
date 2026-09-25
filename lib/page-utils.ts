@@ -84,6 +84,36 @@ export function isHomepage(page: Page): boolean {
   return page.is_index && page.page_folder_id === null;
 }
 
+/** The only page fields link resolution reads on the client. */
+export type LinkResolutionPage = Pick<Page, 'id' | 'slug' | 'is_index' | 'is_dynamic' | 'page_folder_id'>;
+
+/** The only folder fields link resolution reads on the client. */
+export type LinkResolutionFolder = Pick<PageFolder, 'id' | 'slug' | 'page_folder_id'>;
+
+/**
+ * Project pages down to the fields link resolution needs. Full rows carry
+ * every page's SEO text, custom code and `settings.auth.password`, so passing
+ * them to a client component leaks that into the RSC payload of every page.
+ */
+export function slimPagesForLinks(pages: Page[]): LinkResolutionPage[] {
+  return pages.map(({ id, slug, is_index, is_dynamic, page_folder_id }) => ({
+    id,
+    slug,
+    is_index,
+    is_dynamic,
+    page_folder_id,
+  }));
+}
+
+/** Folder counterpart of {@link slimPagesForLinks}. */
+export function slimFoldersForLinks(folders: PageFolder[]): LinkResolutionFolder[] {
+  return folders.map(({ id, slug, page_folder_id }) => ({
+    id,
+    slug,
+    page_folder_id,
+  }));
+}
+
 /**
  * Strip leading/trailing slashes from a single slug segment so it doesn't
  * collapse into an empty path or introduce double slashes when joined.

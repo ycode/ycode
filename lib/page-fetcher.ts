@@ -8,7 +8,7 @@ import { getValuesByItemIds } from '@/lib/repositories/collectionItemValueReposi
 import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepository';
 import { enrichItemsWithCountValues } from '@/lib/repositories/collectionCountRepository';
 import { getLocaleScaffoldTranslations, getCmsTranslationsForItems } from '@/lib/repositories/translationRepository';
-import { getTranslatableKey, slimTranslations } from '@/lib/locale-runtime';
+import { getTranslatableKey, slimTranslations, translatePageCustomCode } from '@/lib/locale-runtime';
 import type { Page, PageFolder, PageLayers, Component, ComponentVariable, CollectionItemWithValues, CollectionField, Layer, CollectionPaginationMeta, Translation, Locale } from '@/types';
 import { getCollectionVariable, resolveFieldValue, evaluateVisibility, evaluateCondition, getLayerHtmlTag, filterDisabledSliderLayers } from '@/lib/layer-utils';
 import { isFieldVariable, isAssetVariable, createDynamicTextVariable, createDynamicRichTextVariable, createAssetVariable, getDynamicTextContent, getVariableStringValue, getAssetId, resolveDesignStyles } from '@/lib/variable-utils';
@@ -888,14 +888,19 @@ async function fetchPageByPathInternal(
 }
 
 /**
- * Strip the bulk translation catalog from resolved page data, keeping only the
- * slug + seo rows still consumed downstream (localized URLs and metadata). Text
- * and media are already injected into the layer tree, so keeping the full
- * catalog would only bloat caches and the serialized RSC payload.
+ * Localize the page's custom code, then strip the bulk translation catalog from
+ * resolved page data, keeping only the slug + seo rows still consumed
+ * downstream (localized URLs and metadata). Text and media are already injected
+ * into the layer tree, so keeping the full catalog would only bloat caches and
+ * the serialized RSC payload.
  */
 function withSlimTranslations(data: PageData | null): PageData | null {
   if (!data?.translations) return data;
-  return { ...data, translations: slimTranslations(data.translations, { includeSeo: true }) };
+  return {
+    ...data,
+    page: translatePageCustomCode(data.page, data.translations),
+    translations: slimTranslations(data.translations, { seoForPageId: data.page.id }),
+  };
 }
 
 export const fetchPageByPath = cache(async function fetchPageByPath(

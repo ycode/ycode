@@ -1,4 +1,4 @@
-import type { Layer, Page, Translation, Locale, LocaleOption, CollectionField, Component, ComponentVariable, DynamicTextVariable, DynamicRichTextVariable, StringAssetId, FieldVariable } from '@/types';
+import type { Layer, Page, Translation, TranslationContentType, Locale, LocaleOption, CollectionField, Component, ComponentVariable, DynamicTextVariable, DynamicRichTextVariable, StringAssetId, FieldVariable } from '@/types';
 import { getLayerIcon, getLayerName } from '@/lib/layer-display-utils';
 import {
   buildLayerTranslationKey,
@@ -312,7 +312,7 @@ export interface TranslatableItem {
   source_type: 'page' | 'folder' | 'component' | 'cms'; // Source type (page, folder, component, cms)
   source_id: string; // Source ID (e.g., page ID, folder ID, component ID, collection item ID)
   content_key: string; // Source key (e.g., 'layer:{layerId}:text', 'seo:title', 'slug')
-  content_type: 'text' | 'richtext' | 'asset_id'; // Content type (text, richtext, asset)
+  content_type: TranslationContentType; // Content type (text, richtext, asset, code)
   content_value: string; // Current text value (may contain inline variables)
   open_in_sheet?: boolean; // If true, editing opens in a right-side sheet panel (for block-level rich text)
   info: {
@@ -708,8 +708,42 @@ function extractSeoItems(
 }
 
 /**
- * Extract all translatable items from a page (slug, SEO, and layers)
- * Ordered: slug first, then SEO settings, then layer texts
+ * Extract translatable custom code items from page settings.
+ * Lets multilingual sites emit locale-specific JSON-LD, meta tags or scripts.
+ */
+function extractCustomCodeItems(
+  pageId: string,
+  customCode: { head?: string; body?: string } | undefined,
+  items: TranslatableItem[]
+): void {
+  if (!customCode) return;
+
+  const slots = [
+    { key: 'head', value: customCode.head, label: 'Header code' },
+    { key: 'body', value: customCode.body, label: 'Body code' },
+  ] as const;
+
+  for (const slot of slots) {
+    if (!slot.value || typeof slot.value !== 'string' || !slot.value.trim()) continue;
+
+    items.push({
+      key: `page:${pageId}:custom_code:${slot.key}`,
+      source_type: 'page',
+      source_id: pageId,
+      content_key: `custom_code:${slot.key}`,
+      content_type: 'code',
+      content_value: slot.value.trim(),
+      info: {
+        icon: 'code',
+        label: slot.label,
+      },
+    });
+  }
+}
+
+/**
+ * Extract all translatable items from a page (slug, SEO, custom code, and layers)
+ * Ordered: slug first, then SEO settings, then custom code, then layer texts
  * Note: Dynamic page slugs and index pages (homepage / folder index) are
  * excluded — their slug doesn't contribute to the URL.
  */
@@ -742,7 +776,10 @@ export function extractPageTranslatableItems(
   // 2. Extract SEO items (second)
   extractSeoItems(page.id, page.settings?.seo, items);
 
-  // 3. Extract layer texts (third), including per-instance component overrides
+  // 3. Extract custom code items (third)
+  extractCustomCodeItems(page.id, page.settings?.custom_code, items);
+
+  // 4. Extract layer texts (fourth), including per-instance component overrides
   if (layers && Array.isArray(layers) && layers.length > 0) {
     const componentsById = components
       ? new Map(components.map(c => [c.id, c]))

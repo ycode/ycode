@@ -8,7 +8,7 @@
  * template tree behind them into the public bundle.
  */
 
-import type { Translation } from '@/types';
+import type { Page, Translation } from '@/types';
 
 /**
  * Build a stable storage key for any translation row.
@@ -109,29 +109,52 @@ export function getTranslatedAssetId(
  * Slim a per-locale translation catalog down to only the rows still needed
  * after server-side injection. Text/media translations are already baked into
  * the layer tree (via `injectTranslatedText`), so we drop them and keep:
- *   - slug rows — localized link/URL building (client + server)
- *   - seo rows (when `includeSeo`) — localized <title>/description/OG image
+ *   - slug rows — localized link/URL building across every page (client + server)
+ *   - seo rows for `seoForPageId` — metadata is only ever generated for the
+ *     page being rendered, so other pages' rows are dead weight
  * Dropping the rest keeps the full ~MB catalog out of `PageData` and the
  * serialized RSC/hydration payload on every localized page.
  */
 export function slimTranslations(
   translations: Record<string, Translation> | null | undefined,
-  options?: { includeSeo?: boolean }
+  options?: { seoForPageId?: string }
 ): Record<string, Translation> | undefined {
   if (!translations) return undefined;
 
-  const includeSeo = options?.includeSeo ?? false;
+  const seoForPageId = options?.seoForPageId;
   const slim: Record<string, Translation> = {};
   for (const key in translations) {
-    const contentKey = translations[key].content_key;
-    const keep = contentKey === 'slug'
-      || contentKey.endsWith(':slug')
-      || (includeSeo && contentKey.startsWith('seo:'));
-    if (keep) {
+    const { content_key: contentKey, source_id: sourceId } = translations[key];
+    const isSlug = contentKey === 'slug' || contentKey.endsWith(':slug');
+    const isSeo = contentKey.startsWith('seo:');
+    if (isSlug || (isSeo && sourceId === seoForPageId)) {
       slim[key] = translations[key];
     }
   }
   return slim;
+}
+
+/**
+ * Return `page` with its custom head/body code swapped for the active locale's
+ * translations. Applied once when the page is fetched so every consumer (page
+ * renderer, document <head>, static export) reads already-localized code.
+ * Returns the original object when nothing is translated.
+ */
+export function translatePageCustomCode(
+  page: Page,
+  translations: Record<string, Translation> | null | undefined
+): Page {
+  const customCode = page.settings?.custom_code;
+  if (!customCode || !translations) return page;
+
+  const head = getTranslatedText(customCode.head, 'custom_code:head', translations, page.id) || '';
+  const body = getTranslatedText(customCode.body, 'custom_code:body', translations, page.id) || '';
+  if (head === customCode.head && body === customCode.body) return page;
+
+  return {
+    ...page,
+    settings: { ...page.settings, custom_code: { head, body } },
+  };
 }
 
 /** Get translated text if a translation exists, otherwise return the original. */

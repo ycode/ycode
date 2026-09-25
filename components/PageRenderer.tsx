@@ -26,7 +26,7 @@ import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepos
 import { REF_PAGE_PREFIX, REF_COLLECTION_PREFIX, isCollectionItemKeyword, parseCollectionLinkValue, type ResolvedAsset } from '@/lib/link-utils';
 import { getClassesString, hasPasswordFormLayer } from '@/lib/layer-utils';
 import { buildGlobalsMetaMap, buildGlobalsValueMap } from '@/lib/collection-field-utils';
-import { buildLocalizedPageUrls, type LocalizedDynamicSlug } from '@/lib/page-utils';
+import { buildLocalizedPageUrls, slimFoldersForLinks, slimPagesForLinks, type LocalizedDynamicSlug } from '@/lib/page-utils';
 import { getTranslatableKey, slimTranslations } from '@/lib/locale-runtime';
 import { getSlugTranslationsByLocale } from '@/lib/repositories/translationRepository';
 import type { Layer, BackgroundsDesign, Component, Page, CollectionItemWithValues, CollectionField, Locale, PageFolder, PasswordProtectionContext, Translation } from '@/types';
@@ -900,8 +900,11 @@ export default async function PageRenderer({
           currentLocale={locale}
           availableLocales={availableLocales}
           localizedPageUrls={localizedPageUrls}
-          pages={pages as any}
-          folders={folders as any}
+          // Only link resolution consumes these client-side. Full rows would
+          // serialize every page's SEO text, custom code and auth password
+          // into the RSC payload of every page.
+          pages={slimPagesForLinks(pages) as any}
+          folders={slimFoldersForLinks(folders) as any}
           collectionItemSlugs={collectionItemSlugs}
           isPreview={isPreview}
           // Text/media translations are already baked into the layer tree

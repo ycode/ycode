@@ -30,7 +30,7 @@ import type { TranslatableItem } from '@/lib/localisation-utils';
 import { getTranslatableKey } from '@/lib/locale-runtime';
 import { buildTiptapDoc, validateTranslationContent } from '@/lib/mcp/utils';
 import type { RichTextBlock } from '@/lib/mcp/utils';
-import type { ComponentVariant, Layer } from '@/types';
+import type { ComponentVariant, Layer, TranslationContentType } from '@/types';
 
 const richTextBlockSchema = z.object({
   type: z.enum(['paragraph', 'heading', 'blockquote', 'bulletList', 'orderedList', 'codeBlock', 'horizontalRule']),
@@ -175,7 +175,7 @@ export function registerLocaleTools(server: McpServer) {
       source_type: z.enum(['page', 'folder', 'component', 'cms']).describe('Type of source being translated'),
       source_id: z.string().describe('ID of the source (page ID, component ID, etc.)'),
       content_key: z.string().describe('Content key identifying what is being translated (e.g. layer ID or field name)'),
-      content_type: z.enum(['text', 'richtext', 'asset_id']).optional().describe('Type of content. Defaults to "text".'),
+      content_type: z.enum(['text', 'richtext', 'asset_id', 'code']).optional().describe('Type of content. Defaults to "text".'),
       content_value: z.string().describe('The translated content'),
       is_completed: z.boolean().optional().describe('Mark translation as complete. Defaults to true. Incomplete translations are saved as drafts but never shown on the live site.'),
     },
@@ -213,7 +213,7 @@ export function registerLocaleTools(server: McpServer) {
         source_type: z.enum(['page', 'folder', 'component', 'cms']),
         source_id: z.string(),
         content_key: z.string(),
-        content_type: z.enum(['text', 'richtext', 'asset_id']).optional(),
+        content_type: z.enum(['text', 'richtext', 'asset_id', 'code']).optional(),
         content_value: z.string(),
         is_completed: z.boolean().optional(),
       })).min(1).max(1000).describe('Array of translations to upsert (max 1000)'),
@@ -240,7 +240,7 @@ export function registerLocaleTools(server: McpServer) {
         source_type: t.source_type as 'page' | 'folder' | 'component' | 'cms',
         source_id: t.source_id,
         content_key: t.content_key,
-        content_type: (t.content_type || 'text') as 'text' | 'richtext' | 'asset_id',
+        content_type: (t.content_type || 'text') as TranslationContentType,
         content_value: t.content_value,
         is_completed: t.is_completed ?? true,
       }));
