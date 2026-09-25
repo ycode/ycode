@@ -1697,7 +1697,7 @@ export interface UpdateLocaleData {
 }
 
 export type TranslationSourceType = 'page' | 'folder' | 'component' | 'cms'
-export type TranslationContentType = 'text' | 'richtext' | 'asset_id'
+export type TranslationContentType = 'text' | 'richtext' | 'asset_id' | 'code'
 
 export interface Translation {
   id: string;

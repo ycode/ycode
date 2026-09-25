@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
+import { CodeEditor } from '@/components/ui/code-editor';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Separator } from '@/components/ui/separator';
@@ -89,6 +90,9 @@ export default function TranslationRow({
   const isRichText = item.content_type === 'richtext';
   const openInSheet = isRichText && item.open_in_sheet === true;
 
+  // Raw HTML/JS (page custom code) — edited in a syntax-highlighted editor
+  const isCode = item.content_type === 'code';
+
   // Flatten field groups for parseValueToContent fallback
   const flatFields = React.useMemo(() => flattenFieldGroups(fieldGroups), [fieldGroups]);
 
@@ -124,7 +128,7 @@ export default function TranslationRow({
   const rawTranslationValue = localInputValues[item.key] !== undefined
     ? localInputValues[item.key]
     : storeValue;
-  const translationValue = !isRichText && looksLikeTiptapJson(rawTranslationValue)
+  const translationValue = !isRichText && !isCode && looksLikeTiptapJson(rawTranslationValue)
     ? tiptapDocToCanonicalString(JSON.parse(rawTranslationValue))
     : rawTranslationValue;
 
@@ -158,6 +162,7 @@ export default function TranslationRow({
   // Variable references are rendered as `[Label]` so they're clearly distinguished from
   // user-translatable text (mirrors the old localization UI).
   const originalPreviewText = (() => {
+    if (isCode) return '';
     const tiptapDoc = isRichText && typeof originalValueForEditor === 'object'
       ? originalValueForEditor
       : (item.content_value ? parseValueToContent(item.content_value, flatFields, undefined, allFields) : null);
@@ -615,6 +620,12 @@ export default function TranslationRow({
             <div className="flex items-center gap-2 p-2 border border-border/50 rounded-md bg-secondary/20 opacity-80">
               {renderAssetPreview(sourceAsset)}
             </div>
+          ) : isCode ? (
+            <CodeEditor
+              value={item.content_value}
+              readOnly={true}
+              className="max-h-64 opacity-60"
+            />
           ) : (
             <div className="text-sm opacity-50">
               <RichTextEditor
@@ -643,6 +654,20 @@ export default function TranslationRow({
                     {renderAssetPreview(displayedAsset)}
                   </>
                 )}
+              </div>
+            ) : isCode ? (
+              // Blur bubbles from the inner textarea, so the wrapper commits the edit
+              <div onBlur={() => handleTranslationBlur(translationValue)}>
+                <CodeEditor
+                  value={translationValue}
+                  onValueChange={handleTranslationChange}
+                  placeholder={
+                    translation?.is_completed === true
+                      ? '(Using original)'
+                      : 'Enter translation...'
+                  }
+                  className="max-h-64"
+                />
               </div>
             ) : openInSheet ? (
               <div

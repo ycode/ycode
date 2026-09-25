@@ -3,7 +3,7 @@
  * These are simplified versions focused on the MCP tool use case.
  */
 
-import type { Layer, DesignProperties, Breakpoint, UIState, CollectionFieldType } from '@/types';
+import type { Layer, DesignProperties, Breakpoint, UIState, CollectionFieldType, TranslationContentType } from '@/types';
 import { generateId } from '@/lib/utils';
 import { markdownToTiptapJson } from '@/lib/markdown-to-tiptap';
 import {
@@ -136,7 +136,7 @@ export function isTiptapDoc(value: unknown): value is TiptapDoc {
  * the AI can use to correct and retry.
  */
 export function validateTranslationContent(
-  contentType: 'text' | 'richtext' | 'asset_id',
+  contentType: TranslationContentType,
   contentValue: string,
 ): { valid: true } | { valid: false; error: string } {
   if (contentType === 'richtext') {
