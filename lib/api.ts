@@ -834,11 +834,22 @@ export const agentSettingsApi = {
     });
   },
 
-  /** Verify a provider API key (or its currently configured one when omitted). */
-  async testKey(provider: AgentProviderId, apiKey?: string): Promise<ApiResponse<{ success: boolean }>> {
+  /** Verify a provider configuration (its currently stored one when omitted).
+   * Ollama takes the endpoint/model being tested so an unsaved form can be
+   * verified before anything is written. */
+  async testKey(
+    provider: AgentProviderId,
+    apiKey?: string,
+    ollama?: { baseUrl?: string; model?: string },
+  ): Promise<ApiResponse<{ success: boolean }>> {
     return apiRequest<{ success: boolean }>('/ycode/api/settings/agent/test', {
       method: 'POST',
-      body: JSON.stringify(apiKey ? { provider, apiKey } : { provider }),
+      body: JSON.stringify({
+        provider,
+        ...(apiKey ? { apiKey } : {}),
+        ...(ollama?.baseUrl ? { ollamaBaseUrl: ollama.baseUrl } : {}),
+        ...(ollama?.model ? { ollamaModel: ollama.model } : {}),
+      }),
     });
   },
 };

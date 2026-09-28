@@ -4,6 +4,12 @@
  * Core types for pages, layers, and editor functionality
  */
 
+// The agent provider/model registry lives in lib/agent/models.ts (shared by the
+// client and server); these types are re-exported below rather than duplicated.
+import type { AgentModelOption, AgentProviderId } from '@/lib/agent/models';
+
+export type { AgentModelOption, AgentProviderId };
+
 // UI State Types (for state-specific styling: hover, focus, etc.)
 export type UIState = 'neutral' | 'hover' | 'focus' | 'active' | 'disabled' | 'current';
 export type Breakpoint = 'mobile' | 'tablet' | 'desktop';
@@ -1300,7 +1306,6 @@ export interface Setting {
 }
 
 // Agent (AI builder) Settings
-export type AgentProviderId = 'anthropic' | 'openai' | 'google' | 'xai';
 
 /** Who a configured provider key is available to. */
 export type AgentKeyScope = 'all' | 'personal';
@@ -1315,6 +1320,10 @@ export interface AgentProviderKeyStatus {
   scope: AgentKeyScope | null;
   /** Masked hint of the configured key (e.g. "sk-ant-...wxyz"), never the full key. */
   maskedKey: string | null;
+  /** Endpoint-based providers (Ollama): the resolved base URL in use. */
+  baseUrl?: string | null;
+  /** Endpoint-based providers (Ollama): the configured model id. */
+  model?: string | null;
 }
 
 export interface AgentSettingsStatus {
@@ -1328,8 +1337,17 @@ export interface AgentSettingsStatus {
   model: string;
   /** Model ids the builder is allowed to use. */
   enabledModels: string[];
+  /** Model ids this project can run, with labels — the shipped allowlist plus
+   * its configured Ollama model. */
+  modelOptions?: AgentModelOption[];
+  /** Resolved Ollama endpoint, so settings can show and prefill it. */
+  ollamaBaseUrl?: string | null;
+  /** Configured Ollama model id. */
+  ollamaModel?: string | null;
 }
 
+/** A model the builder can run (id + display label + owning provider) — re-exported
+ * from the top of this file with the agent registry types. */
 export interface UpdateAgentSettingsData {
   /** Per-provider keys; null removes the stored key; undefined keeps the current one. */
   keys?: Partial<Record<AgentProviderId, string | null>>;
@@ -1339,6 +1357,10 @@ export interface UpdateAgentSettingsData {
   model?: string;
   enabledModels?: string[];
   agentEnabled?: boolean;
+  /** Ollama endpoint (OpenAI-compatible base URL). Empty string clears it. */
+  ollamaBaseUrl?: string;
+  /** Ollama model id. Empty string clears it. */
+  ollamaModel?: string;
 }
 
 // Color Variables

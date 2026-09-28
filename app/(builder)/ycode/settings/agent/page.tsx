@@ -30,11 +30,11 @@ import { Switch } from '@/components/ui/switch';
 import AgentKeyForm from '@/app/(builder)/ycode/components/ai/AgentKeyForm';
 import ProviderLogo from '@/app/(builder)/ycode/components/ai/ProviderLogo';
 import { agentSettingsApi } from '@/lib/api';
-import { AGENT_MODELS, AGENT_PROVIDERS } from '@/lib/agent/models';
+import { AGENT_MODELS, AGENT_PROVIDERS, OLLAMA_DEFAULT_BASE_URL } from '@/lib/agent/models';
 import { cn } from '@/lib/utils';
 import { useAgentSettingsStore } from '@/stores/useAgentSettingsStore';
 
-import type { AgentProviderOption } from '@/lib/agent/models';
+import type { AgentModelOption, AgentProviderOption } from '@/lib/agent/models';
 import type { AgentKeyScope, AgentProviderId } from '@/types';
 
 interface KeyFeedback {
@@ -42,10 +42,20 @@ interface KeyFeedback {
   message: string;
 }
 
+/** A project's model options, falling back to the shipped allowlist before the
+ * status has loaded. Includes the configured Ollama model when there is one. */
+function projectModelOptions(status: { modelOptions?: AgentModelOption[] } | null): AgentModelOption[] {
+  return status?.modelOptions ?? AGENT_MODELS;
+}
+
 /** A provider's picker models. Legacy models only show for projects that
  * already have them enabled — new projects can't adopt a superseded model. */
-function visibleProviderModels(providerId: AgentProviderId, enabledModels: string[]) {
-  return AGENT_MODELS.filter(
+function visibleProviderModels(
+  models: AgentModelOption[],
+  providerId: AgentProviderId,
+  enabledModels: string[],
+) {
+  return models.filter(
     (option) =>
       option.provider === providerId &&
       (!option.legacy || enabledModels.includes(option.id)),
@@ -76,8 +86,9 @@ export default function AgentSettingsPage() {
   );
 
   const enabledModels = status?.enabledModels ?? [];
+  const allModels = projectModelOptions(status);
   // Models the agent can actually run: enabled AND from a connected provider.
-  const usableModels = AGENT_MODELS.filter(
+  const usableModels = allModels.filter(
     (option) =>
       enabledModels.includes(option.id) &&
       status?.providers[option.provider]?.configured,
@@ -104,7 +115,7 @@ export default function AgentSettingsPage() {
       ? [...new Set([...enabledModels, modelId])]
       : enabledModels.filter((id) => id !== modelId);
 
-    const nextUsable = AGENT_MODELS.filter(
+    const nextUsable = allModels.filter(
       (option) => next.includes(option.id) && status.providers[option.provider]?.configured,
     );
     if (nextUsable.length === 0) {
@@ -211,6 +222,7 @@ export default function AgentSettingsPage() {
                 <ProviderCard
                   key={provider.id}
                   provider={provider}
+                  models={allModels}
                   enabledModels={enabledModels}
                   isConnected={status?.providers[provider.id]?.configured ?? false}
                   scope={status?.providers[provider.id]?.scope ?? null}
@@ -273,6 +285,7 @@ export default function AgentSettingsPage() {
                 key={selectedProvider.id}
                 provider={selectedProvider}
                 status={status}
+                models={allModels}
                 enabledModels={enabledModels}
                 isSavingModels={isSavingModels}
                 modelsError={modelsError}
@@ -351,14 +364,19 @@ function ProviderScopeBadge({ scope, className }: ProviderScopeBadgeProps) {
 
 interface ProviderCardProps {
   provider: AgentProviderOption;
+  models: AgentModelOption[];
   enabledModels: string[];
   isConnected: boolean;
   scope: AgentKeyScope | null;
   onOpenSettings: () => void;
 }
 
-function ProviderCard({ provider, enabledModels, isConnected, scope, onOpenSettings }: ProviderCardProps) {
-  const models = visibleProviderModels(provider.id, enabledModels);
+function ProviderCard({ provider, models: allModels, enabledModels, isConnected, scope, onOpenSettings }: ProviderCardProps) {
+  const models = visibleProviderModels(allModels, provider.id, enabledModels);
+  const ollama = provider.id === 'ollama';
+  const summary = ollama
+    ? models.map((option) => option.label).join(', ') || 'Cloud or self-hosted endpoint'
+    : models.map((option) => option.label).join(', ');
 
   return (
     <button
@@ -372,9 +390,7 @@ function ProviderCard({ provider, enabledModels, isConnected, scope, onOpenSetti
 
       <div className="flex-1 min-w-0">
         <div className="font-medium text-sm mb-0.5">{provider.label}</div>
-        <p className="text-xs text-muted-foreground truncate">
-          {models.map((option) => option.label).join(', ')}
-        </p>
+        <p className="text-xs text-muted-foreground truncate">{summary}</p>
       </div>
 
       {isConnected && <ProviderScopeBadge scope={scope} className="shrink-0" />}
@@ -388,6 +404,7 @@ function ProviderCard({ provider, enabledModels, isConnected, scope, onOpenSetti
 interface ProviderSheetContentProps {
   provider: AgentProviderOption;
   status: ReturnType<typeof useAgentSettingsStore.getState>['status'];
+  models: AgentModelOption[];
   enabledModels: string[];
   isSavingModels: boolean;
   modelsError: string | null;
@@ -398,6 +415,7 @@ interface ProviderSheetContentProps {
 function ProviderSheetContent({
   provider,
   status,
+  models: allModels,
   enabledModels,
   isSavingModels,
   modelsError,
@@ -417,8 +435,10 @@ function ProviderSheetContent({
   const isConnected = keyStatus?.configured ?? false;
   const usesEnvKey = keyStatus?.source === 'env';
   const scope = keyStatus?.scope ?? null;
-  const models = visibleProviderModels(provider.id, enabledModels);
-
+  const models = visibleProviderModels(allModels, provider.id, enabledModels);
+  // Ollama is identified by its endpoint + model, not a key; a self-hosted
+  // server has no key at all, so the key UI is optional there.
+  const isOllama = provider.id === 'ollama';
   const handleScopeChange = async (forAllUsers: boolean) => {
     try {
       setIsSavingScope(true);
@@ -445,7 +465,7 @@ function ProviderSheetContent({
       setFeedback(
         response.error
           ? { success: false, message: response.error }
-          : { success: true, message: 'API key is valid' },
+          : { success: true, message: response.message ?? 'API key is valid' },
       );
     } catch {
       setFeedback({ success: false, message: 'Failed to test API key' });
@@ -462,7 +482,7 @@ function ProviderSheetContent({
           {isConnected && <ProviderScopeBadge scope={scope} />}
           <ProviderStatusBadge isConnected={isConnected} />
         </SheetTitle>
-        {isConnected && !usesEnvKey && (
+        {isConnected && (!usesEnvKey || isOllama) && (
           <SheetActions>
             <Button
               variant="secondary"
@@ -481,83 +501,163 @@ function ProviderSheetContent({
       <div className="mt-3 flex flex-col gap-8">
         {isConnected ? (
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <FieldLabel className="mb-0">API key</FieldLabel>
-              {usesEnvKey && (
-                <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
-                  {provider.envVar}
-                </span>
-              )}
-            </div>
-            <FieldDescription className="mb-3">
-              {usesEnvKey
-                ? 'Key provided by an environment variable on your server.'
-                : `API key ${keyStatus?.maskedKey ?? ''}`}
+            {isOllama ? (
+              <>
+                <div className="flex items-center gap-2 mb-1">
+                  <FieldLabel className="mb-0">Endpoint</FieldLabel>
+                </div>
+                <FieldDescription className="mb-3">
+                  {keyStatus?.baseUrl ?? OLLAMA_DEFAULT_BASE_URL}
+                </FieldDescription>
+                <div className="flex items-center gap-2 mb-1">
+                  <FieldLabel className="mb-0">API key</FieldLabel>
+                  {usesEnvKey && (
+                    <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+                      {provider.envVar}
+                    </span>
+                  )}
+                </div>
+                <FieldDescription className="mb-3">
+                  {keyStatus?.maskedKey
+                    ? `API key ${keyStatus.maskedKey}`
+                    : 'No key — a local server doesn\'t need one.'}
+                </FieldDescription>
+
+                {isReplacing ? (
+                  <AgentKeyForm
+                    provider={provider}
+                    submitLabel="Save"
+                    onDone={() => setIsReplacing(false)}
+                    onCancel={() => setIsReplacing(false)}
+                  />
+                ) : (
+                  <div className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleTest}
+                      disabled={isTesting}
+                    >
+                      {isTesting ? <Spinner className="size-3.5" /> : 'Test connection'}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setFeedback(null);
+                        setIsReplacing(true);
+                      }}
+                    >
+                      Edit
+                    </Button>
+                  </div>
+                )}
+
+                {feedback && (
+                  <p
+                    className={cn(
+                      'text-xs mt-3',
+                      feedback.success ? 'text-green-600 dark:text-green-400' : 'text-destructive',
+                    )}
+                  >
+                    {feedback.message}
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-1">
+                  <FieldLabel className="mb-0">API key</FieldLabel>
+                  {usesEnvKey && (
+                    <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+                      {provider.envVar}
+                    </span>
+                  )}
+                </div>
+                <FieldDescription className="mb-3">
+                  {usesEnvKey
+                    ? 'Key provided by an environment variable on your server.'
+                    : `API key ${keyStatus?.maskedKey ?? ''}`}
+                </FieldDescription>
+
+                {isReplacing ? (
+                  <AgentKeyForm
+                    provider={provider}
+                    submitLabel="Save key"
+                    onDone={() => setIsReplacing(false)}
+                    onCancel={() => setIsReplacing(false)}
+                  />
+                ) : (
+                  <div className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleTest}
+                      disabled={isTesting}
+                    >
+                      {isTesting ? <Spinner className="size-3.5" /> : 'Test API key'}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setFeedback(null);
+                        setIsReplacing(true);
+                      }}
+                    >
+                      {usesEnvKey ? 'Override key' : 'Replace key'}
+                    </Button>
+                  </div>
+                )}
+
+                {feedback && (
+                  <p
+                    className={cn(
+                      'text-xs mt-3',
+                      feedback.success ? 'text-green-600 dark:text-green-400' : 'text-destructive',
+                    )}
+                  >
+                    {feedback.message}
+                  </p>
+                )}
+
+                {!usesEnvKey && (
+                  <div className="flex items-start gap-4 border-t mt-6 pt-5">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <FieldLabel htmlFor={`${provider.id}-scope`} className="mb-0">
+                          Available to all users
+                        </FieldLabel>
+                        {isSavingScope && <Spinner className="size-3.5" />}
+                      </div>
+                      <FieldDescription className="mb-0">
+                        When off, this key works only for you — other users can connect
+                        their own {provider.label} key.
+                      </FieldDescription>
+                    </div>
+                    <Switch
+                      id={`${provider.id}-scope`}
+                      checked={scope !== 'personal'}
+                      disabled={isSavingScope}
+                      onCheckedChange={handleScopeChange}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        ) : isOllama ? (
+          <div>
+            <FieldDescription className="mb-4">
+              Point the agent at Ollama Cloud or your own server. Both the endpoint and
+              a model name are required; a local server needs no API key.
             </FieldDescription>
 
-            {isReplacing ? (
-              <AgentKeyForm
-                provider={provider}
-                submitLabel="Save key"
-                onDone={() => setIsReplacing(false)}
-                onCancel={() => setIsReplacing(false)}
-              />
-            ) : (
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleTest}
-                  disabled={isTesting}
-                >
-                  {isTesting ? <Spinner className="size-3.5" /> : 'Test API key'}
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setFeedback(null);
-                    setIsReplacing(true);
-                  }}
-                >
-                  {usesEnvKey ? 'Override key' : 'Replace key'}
-                </Button>
-              </div>
-            )}
-
-            {feedback && (
-              <p
-                className={cn(
-                  'text-xs mt-3',
-                  feedback.success ? 'text-green-600 dark:text-green-400' : 'text-destructive',
-                )}
-              >
-                {feedback.message}
-              </p>
-            )}
-
-            {!usesEnvKey && (
-              <div className="flex items-start gap-4 border-t mt-6 pt-5">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <FieldLabel htmlFor={`${provider.id}-scope`} className="mb-0">
-                      Available to all users
-                    </FieldLabel>
-                    {isSavingScope && <Spinner className="size-3.5" />}
-                  </div>
-                  <FieldDescription className="mb-0">
-                    When off, this key works only for you — other users can connect
-                    their own {provider.label} key.
-                  </FieldDescription>
-                </div>
-                <Switch
-                  id={`${provider.id}-scope`}
-                  checked={scope !== 'personal'}
-                  disabled={isSavingScope}
-                  onCheckedChange={handleScopeChange}
-                />
-              </div>
-            )}
+            <AgentKeyForm
+              provider={provider}
+              submitLabel="Connect"
+              onDone={() => setFeedback(null)}
+            />
           </div>
         ) : (
           <div>
@@ -601,28 +701,34 @@ function ProviderSheetContent({
               {isSavingModels && <Spinner className="size-3.5" />}
             </div>
             <FieldDescription className="mb-3">
-              Choose which {provider.label} models can be selected in the agent panel
+              {isOllama
+                ? 'The model configured for this endpoint'
+                : `Choose which ${provider.label} models can be selected in the agent panel`}
             </FieldDescription>
-            <div className="flex flex-col gap-2">
-              {models.map((option) => (
-                <label
-                  key={option.id}
-                  className="flex items-center gap-2 text-xs cursor-pointer w-fit"
-                >
-                  <Checkbox
-                    checked={enabledModels.includes(option.id)}
-                    disabled={isSavingModels}
-                    onCheckedChange={(checked) => onToggleModel(option.id, checked === true)}
-                  />
-                  {option.label}
-                  {status?.model === option.id && (
-                    <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
-                      Default
-                    </span>
-                  )}
-                </label>
-              ))}
-            </div>
+            {models.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No model configured yet.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {models.map((option) => (
+                  <label
+                    key={option.id}
+                    className="flex items-center gap-2 text-xs cursor-pointer w-fit"
+                  >
+                    <Checkbox
+                      checked={enabledModels.includes(option.id)}
+                      disabled={isSavingModels}
+                      onCheckedChange={(checked) => onToggleModel(option.id, checked === true)}
+                    />
+                    {option.label}
+                    {status?.model === option.id && (
+                      <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+                        Default
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            )}
             {modelsError && (
               <p className="text-xs text-destructive mt-3">{modelsError}</p>
             )}

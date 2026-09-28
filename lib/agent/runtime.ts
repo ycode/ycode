@@ -81,8 +81,33 @@ export type RuntimeEvent =
  * model stops requesting tools (or the turn ceiling is hit).
  */
 export async function* runAgent(options: RunAgentOptions): AsyncIterable<RuntimeEvent> {
-  const { provider, model, signal } = options;
+  // Hard deadline for the whole run. Without it a stalled provider request
+  // (a hung SSE stream that never emits another byte and never errors) blocks
+  // the loop forever: MAX_RUN_MS is only checked between turns, so a request
+  // stuck mid-turn can outlive the budget indefinitely while the browser holds
+  // its SSE connection open and the panel just spins. The abort also cancels
+  // the in-flight fetch, so the run tears down instead of leaking.
+  const runController = new AbortController();
+  const deadlineTimer = setTimeout(() => runController.abort(), MAX_RUN_MS);
+  try {
+    yield* runAgentInner(options, runController);
+  } finally {
+    // The generator can be abandoned mid-consumption (client disconnects, the
+    // route stops reading). Clear the deadline timer either way so it never
+    // keeps the process pinned or fires after the run is gone.
+    clearTimeout(deadlineTimer);
+  }
+}
+
+async function* runAgentInner(
+  options: RunAgentOptions,
+  runController: AbortController,
+): AsyncIterable<RuntimeEvent> {
+  const { provider, model, signal: callerSignal } = options;
   const startedAt = Date.now();
+  const signal = callerSignal
+    ? AbortSignal.any([callerSignal, runController.signal])
+    : runController.signal;
   const maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
   const system = buildSystemPrompt(options.context);
   const allTools = getAgentTools();
@@ -259,6 +284,18 @@ export async function* runAgent(options: RunAgentOptions): AsyncIterable<Runtime
         }
       }
     } catch (error) {
+      // Deadline hit (or the caller aborted) mid-request. The provider call was
+      // cancelled, so nothing partial is trustworthy — but edits made by earlier
+      // turns are already persisted, so end the run the same resumable way the
+      // between-turns budget check does instead of throwing the stream away.
+      if (runController.signal.aborted || (error as { name?: string })?.name === 'AbortError') {
+        usage.log(model, turn);
+        yield* emitPageChanges();
+        yield* emitComponentChanges();
+        yield usage.toEvent(model);
+        yield { type: 'error', message: TIME_LIMIT_MESSAGE };
+        return;
+      }
       // The prompt is too long for the model's context window. It's rejected
       // before any output, so retrying is safe. Only re-trim on the first turn,
       // where the history is all plain text/image turns — trimming mid-loop could
@@ -284,6 +321,18 @@ export async function* runAgent(options: RunAgentOptions): AsyncIterable<Runtime
     messages.push({ role: 'assistant', content: assistantBlocks });
 
     if (toolUses.length === 0) {
+      // The deadline fired mid-request: the turn produced no output and no
+      // tools because it was cancelled, not because the model finished. Report
+      // it as the resumable time-limit stop (the loop-top check would have said
+      // the same) instead of streaming a misleading "done".
+      if (runController.signal.aborted) {
+        usage.log(model, turn + 1);
+        yield* emitPageChanges();
+        yield* emitComponentChanges();
+        yield usage.toEvent(model);
+        yield { type: 'error', message: TIME_LIMIT_MESSAGE };
+        return;
+      }
       // Safety net: the run ended with a "the work is done" reply but no editing
       // tool ever ran (reads like get_layers don't count). Nudge it once to
       // actually perform the edits rather than leaving the user stuck.
