@@ -24,7 +24,7 @@ import { getAllItemsByCollectionId, getAllItemsRaw } from '@/lib/repositories/co
 import { publishAssets, getUnpublishedAssets, hardDeleteSoftDeletedAssets } from '@/lib/repositories/assetRepository';
 import { publishAssetFolders, getUnpublishedAssetFolders, hardDeleteSoftDeletedAssetFolders } from '@/lib/repositories/assetFolderRepository';
 import { publishFonts } from '@/lib/repositories/fontRepository';
-import { getColorVariablesHash } from '@/lib/repositories/colorVariableRepository';
+import { getCssVariablesGraphHash } from '@/lib/repositories/cssVariableRepository';
 import { publishGlobalVariables, hardDeleteSoftDeletedGlobalVariables } from '@/lib/repositories/globalVariableRepository';
 import { getSettingByKey, setSetting } from '@/lib/repositories/settingsRepository';
 import type { Setting, PublishStats, PublishTableStats } from '@/types';
@@ -645,12 +645,15 @@ export async function POST(request: NextRequest) {
       let globalChanged = false;
       let globalChangedReason = '';
       try {
-        const currentColorHash = await getColorVariablesHash();
-        const lastColorHash = await getSettingByKey('color_variables_published_hash');
-        if (currentColorHash !== lastColorHash) {
+        // Hash covers the whole CSS variable graph (sets, modes, groups,
+        // variables, values), not just colors. We keep the legacy setting key
+        // (`color_variables_published_hash`) so the migration is invisible.
+        const currentCssVarsHash = await getCssVariablesGraphHash();
+        const lastCssVarsHash = await getSettingByKey('color_variables_published_hash');
+        if (currentCssVarsHash !== lastCssVarsHash) {
           globalChanged = true;
-          globalChangedReason = `color hash mismatch: ${lastColorHash?.slice(0, 8) ?? 'null'} → ${currentColorHash.slice(0, 8)}`;
-          await setSetting('color_variables_published_hash', currentColorHash);
+          globalChangedReason = `CSS variables hash mismatch: ${lastCssVarsHash?.slice(0, 8) ?? 'null'} → ${currentCssVarsHash.slice(0, 8)}`;
+          await setSetting('color_variables_published_hash', currentCssVarsHash);
         }
       } catch (err) {
         globalChanged = true;

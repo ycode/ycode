@@ -107,6 +107,7 @@ function splitClassesPreservingBrackets(cls: string): string[] {
  */
 function isColorValue(value: string): boolean {
   // Check for CSS custom property color references: color:var(--...) or var(--...)
+  if (/^(length|number|percentage|family-name):/.test(value)) return false;
   if (/^color:var\(--/.test(value)) return true;
   if (/^var\(--/.test(value)) return true;
 
@@ -174,6 +175,13 @@ function formatMeasurementClass(
     return `${prefix}-${value}`;
   }
 
+  // CSS variable reference (e.g. var(--<uuid>)). Tailwind needs an explicit
+  // value-type hint inside arbitrary values so a bare var() reference is not
+  // ambiguous with a color. We default to "length:" for measurements.
+  if (/^var\(--/.test(value)) {
+    return `${prefix}-[length:${value}]`;
+  }
+
   // Check if value already ends with px - don't add it again
   if (value.endsWith('px')) {
     return `${prefix}-[${value}]`;
@@ -198,6 +206,30 @@ function formatMeasurementClass(
 
   // Otherwise use as named class (e.g., "large", "small")
   return `${prefix}-${value}`;
+}
+
+/**
+ * Wrap a CSS variable reference (`var(--<id>)`) into a Tailwind arbitrary
+ * value with the appropriate value-type hint. Used by the inspector pickers
+ * when binding a CSS variable to a design property.
+ *
+ * For example, picking the variable `--abc` as a size for padding-top emits
+ * `pt-[length:var(--abc)]`, which Tailwind 4 unambiguously interprets as a
+ * length value (not a color or a number).
+ */
+export function formatCssVariableReferenceClass(
+  prefix: string,
+  cssVariableRef: string,
+  type: 'color' | 'length' | 'percentage' | 'number' | 'family-name'
+): string {
+  if (type === 'color') {
+    // Colors historically use the "color:" hint inside arbitrary values only
+    // for text-* classes; for most other prefixes the bracket value works
+    // as-is. We pick the broader form for safety so it round-trips in
+    // inspectors that scan for "color:var(".
+    return `${prefix}-[color:${cssVariableRef}]`;
+  }
+  return `${prefix}-[${type}:${cssVariableRef}]`;
 }
 
 /**
@@ -794,11 +826,15 @@ export function propertyToClass(
       case 'fontFamily':
         // Built-in fonts: sans, serif, mono → font-sans, font-serif, font-mono
         if (['sans', 'serif', 'mono'].includes(value)) return `font-${value}`;
+        // CSS variable reference — emit with `family-name:` hint so Tailwind
+        // doesn't interpret it as a font-weight number.
+        if (/^var\(--/.test(value)) return `font-[family-name:${value}]`;
         // Google/custom fonts: replace spaces with underscores for Tailwind arbitrary values
         return `font-[${value.replace(/\s+/g, '_')}]`;
       case 'lineHeight':
-        return value.match(/^\.?\d/) ? `leading-[${value}]` : `leading-${value}`;
+        return value.startsWith('var(') || value.match(/^\.?\d/) ? `leading-[${value}]` : `leading-${value}`;
       case 'letterSpacing':
+        if (value.startsWith('var(')) return `tracking-[${value}]`;
         // Check if value starts with digit/minus/decimal and doesn't already have a unit
         if (value.match(/^-?\.?\d/)) {
           // Check if value already has a unit (ends with letters or %)
@@ -1457,7 +1493,9 @@ export function classesToDesign(classes: string | string[]): Layer['design'] {
     }
   }
 
-  classList.forEach(cls => {
+  classList.forEach(originalClass => {
+    let cls = originalClass.replace(/\[(?:length|percentage|family-name|number):/g, '[');
+    const isLengthVariable = originalClass.includes('[length:var(') || originalClass.includes('[percentage:var(');
     // CRITICAL FIX: Skip state-specific classes (they should not be in design object)
     // The design object should only contain base/neutral values
     // State-specific values are handled by getInheritedValue based on activeUIState
@@ -1551,7 +1589,7 @@ export function classesToDesign(classes: string | string[]): Layer['design'] {
     // Color - Check FIRST before fontSize to avoid confusion
     if (cls.startsWith('text-[')) {
       const value = extractArbitraryValueWithOpacity(cls);
-      if (value && isColorValue(value.split('/')[0])) {
+      if (value && !isLengthVariable && isColorValue(value.split('/')[0])) {
         design.typography!.color = value;
         return; // Skip further checks for this class
       }
@@ -1564,7 +1602,7 @@ export function classesToDesign(classes: string | string[]): Layer['design'] {
     }
 
     // Font Weight (arbitrary values)
-    if (cls.startsWith('font-[') && !cls.includes('sans') && !cls.includes('serif') && !cls.includes('mono')) {
+    if (cls.startsWith('font-[') && !originalClass.includes('[family-name:') && /^font-\[\d/.test(cls)) {
       const value = extractArbitraryValue(cls);
       if (value) design.typography!.fontWeight = value;
     }
@@ -1623,7 +1661,7 @@ export function classesToDesign(classes: string | string[]): Layer['design'] {
     // Text Decoration Color (decoration-[#color] or decoration-[rgb(...)])
     if (cls.startsWith('decoration-[')) {
       const value = extractArbitraryValueWithOpacity(cls);
-      if (value && isColorValue(value.split('/')[0])) {
+      if (value && !isLengthVariable && isColorValue(value.split('/')[0])) {
         design.typography!.textDecorationColor = value;
       }
     }
@@ -1631,7 +1669,7 @@ export function classesToDesign(classes: string | string[]): Layer['design'] {
     // Text Decoration Thickness (decoration-[size] where value is not a color)
     if (cls.startsWith('decoration-[')) {
       const value = extractArbitraryValue(cls);
-      if (value && !isColorValue(value)) {
+      if (value && (isLengthVariable || !isColorValue(value))) {
         design.typography!.textDecorationThickness = value;
       }
     }
@@ -1871,7 +1909,7 @@ export function classesToDesign(classes: string | string[]): Layer['design'] {
     }
 
     // Border Width (all) — exclude color values (hex, rgb, var references)
-    if (cls.startsWith('border-[') && !cls.includes('#') && !cls.includes('rgb') && !cls.includes('var(')) {
+    if (cls.startsWith('border-[') && !cls.includes('#') && !cls.includes('rgb') && (!cls.includes('var(') || isLengthVariable)) {
       const value = extractArbitraryValue(cls);
       if (value) design.borders!.borderWidth = value;
     }
@@ -1884,7 +1922,7 @@ export function classesToDesign(classes: string | string[]): Layer['design'] {
     if (cls === 'border-none') design.borders!.borderStyle = 'none';
 
     // Border Color — also handle raw var() references without color: prefix
-    if (cls.startsWith('border-[#') || cls.startsWith('border-[rgb') || cls.startsWith('border-[color:var(') || cls.startsWith('border-[var(')) {
+    if (cls.startsWith('border-[#') || cls.startsWith('border-[rgb') || cls.startsWith('border-[color:var(') || (cls.startsWith('border-[var(') && !isLengthVariable)) {
       const value = extractArbitraryValueWithOpacity(cls);
       if (value) design.borders!.borderColor = value;
     }
@@ -1919,7 +1957,7 @@ export function classesToDesign(classes: string | string[]): Layer['design'] {
     }
 
     // Outline Width — exclude color values (hex, rgb, var references)
-    if (cls.startsWith('outline-[') && !cls.includes('#') && !cls.includes('rgb') && !cls.includes('var(')) {
+    if (cls.startsWith('outline-[') && !cls.includes('#') && !cls.includes('rgb') && (!cls.includes('var(') || isLengthVariable)) {
       const value = extractArbitraryValue(cls);
       if (value) design.borders!.outlineWidth = value;
     } else if (cls.match(/^outline-\d+$/)) {
@@ -1927,7 +1965,7 @@ export function classesToDesign(classes: string | string[]): Layer['design'] {
     }
 
     // Outline Color — also handle raw var() references without color: prefix
-    if (cls.startsWith('outline-[#') || cls.startsWith('outline-[rgb') || cls.startsWith('outline-[color:var(') || cls.startsWith('outline-[var(')) {
+    if (cls.startsWith('outline-[#') || cls.startsWith('outline-[rgb') || cls.startsWith('outline-[color:var(') || (cls.startsWith('outline-[var(') && !isLengthVariable)) {
       const value = extractArbitraryValueWithOpacity(cls);
       if (value) design.borders!.outlineColor = value;
     }

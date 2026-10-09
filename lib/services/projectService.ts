@@ -43,6 +43,12 @@ export const CONTENT_TABLES = [
   'color_variables',
   'global_variables',
   'ai_chats',
+  // Typed CSS variables system (parents before children for FK-safe inserts)
+  'css_variable_sets',
+  'css_variable_set_modes',
+  'css_variable_groups',
+  'css_variables',
+  'css_variable_values',
 ];
 
 /**
@@ -52,6 +58,12 @@ export const TABLES_TO_TRUNCATE = [
   'ai_chats',
   'global_variables',
   'color_variables',
+  // Typed CSS variables (children first)
+  'css_variable_values',
+  'css_variables',
+  'css_variable_groups',
+  'css_variable_set_modes',
+  'css_variable_sets',
   'webhook_deliveries',
   'form_submissions',
   'translations',

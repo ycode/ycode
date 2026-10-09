@@ -11,7 +11,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import Icon from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import CssVariableInput from './css-variables/CssVariableInput';
+import { InputGroup, InputGroupAddon } from '@/components/ui/input-group';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -370,7 +371,7 @@ const SizingControls = memo(function SizingControls({ layer, parentLayer = null,
         <Label variant="muted" className="h-8">Width</Label>
         <div className="col-span-2 flex flex-col gap-2">
           <ButtonGroup>
-            <Input
+            <CssVariableInput
               value={widthInput} onChange={(e) => handleWidthChange(e.target.value)}
             />
             <ButtonGroupSeparator />
@@ -401,7 +402,8 @@ const SizingControls = memo(function SizingControls({ layer, parentLayer = null,
                       </Tooltip>
                     </div>
                   </InputGroupAddon>
-                  <InputGroupInput
+                  <CssVariableInput
+                    grouped
                     placeholder="Min" value={minWidthInput}
                     onChange={(e) => handleMinWidthChange(e.target.value)}
                   />
@@ -435,7 +437,8 @@ const SizingControls = memo(function SizingControls({ layer, parentLayer = null,
                       </Tooltip>
                     </div>
                   </InputGroupAddon>
-                  <InputGroupInput
+                  <CssVariableInput
+                    grouped
                     placeholder="Max" value={maxWidthInput}
                     onChange={(e) => handleMaxWidthChange(e.target.value)}
                   />
@@ -462,7 +465,7 @@ const SizingControls = memo(function SizingControls({ layer, parentLayer = null,
         <Label variant="muted" className="h-8">Height</Label>
         <div className="col-span-2 flex flex-col gap-2">
           <ButtonGroup>
-            <Input
+            <CssVariableInput
               value={heightInput} onChange={(e) => handleHeightChange(e.target.value)}
             />
             <ButtonGroupSeparator />
@@ -492,7 +495,8 @@ const SizingControls = memo(function SizingControls({ layer, parentLayer = null,
                       </Tooltip>
                     </div>
                   </InputGroupAddon>
-                  <InputGroupInput
+                  <CssVariableInput
+                    grouped
                     placeholder="Min" value={minHeightInput}
                     onChange={(e) => handleMinHeightChange(e.target.value)}
                   />
@@ -525,7 +529,8 @@ const SizingControls = memo(function SizingControls({ layer, parentLayer = null,
                       </Tooltip>
                     </div>
                   </InputGroupAddon>
-                  <InputGroupInput
+                  <CssVariableInput
+                    grouped
                     placeholder="Max" value={maxHeightInput}
                     onChange={(e) => handleMaxHeightChange(e.target.value)}
                   />

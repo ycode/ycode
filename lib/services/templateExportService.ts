@@ -15,7 +15,13 @@ const EXPORT_TABLES = [
   // Asset-related (no FKs to other exportable tables)
   'asset_folders',
   'assets',
-  // Design tokens
+  // Design tokens (typed CSS variables — parents first for FKs)
+  'css_variable_sets',
+  'css_variable_set_modes',
+  'css_variable_groups',
+  'css_variables',
+  'css_variable_values',
+  // Legacy color variables (kept for backward compat with older templates)
   'color_variables',
   'fonts',
   // Page-related
@@ -73,6 +79,11 @@ const UUID_COLUMNS = [
   'source_id',               // FK in translations (stored as string but contains UUIDs)
   // Styling FK
   'layer_style_id',
+  // CSS variables FKs
+  'set_id',
+  'mode_id',
+  'group_id',
+  'css_variable_id',
 ];
 
 /**

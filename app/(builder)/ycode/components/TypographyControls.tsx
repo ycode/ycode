@@ -4,10 +4,11 @@ import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from '
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import CssVariableInput from './css-variables/CssVariableInput';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { InputGroup, InputGroupAddon } from '@/components/ui/input-group';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Icon from '@/components/ui/icon';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -25,6 +26,7 @@ import type { Collection, CollectionField, Layer } from '@/types';
 import type { FieldGroup } from '@/lib/collection-field-utils';
 import ColorPropertyField from './ColorPropertyField';
 import FontPicker from './FontPicker';
+import CssVariableReferencePicker from './css-variables/CssVariableReferencePicker';
 import TextBackgroundImageTab from './TextBackgroundImageTab';
 import type { TextBackgroundImageTabHandle } from './TextBackgroundImageTab';
 import TextShadowField from './TextShadowField';
@@ -381,11 +383,17 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
           <>
             <div className="grid grid-cols-3">
               <Label variant="muted">Font</Label>
-              <div className="col-span-2">
-                <FontPicker
+              <div className="col-span-2 flex items-center gap-1">
+                {fontFamily.startsWith('var(') ? (
+                  <CssVariableInput
+                    variableTypes={['font_family']} value={fontFamily}
+                    onChange={e => handleFontFamilyChange(e.target.value)}
+                  />
+                ) : <FontPicker
                   value={fontFamily}
                   onChange={handleFontFamilyChange}
-                />
+                    />}
+                <CssVariableReferencePicker type="font_family" onSelect={handleFontFamilyChange} />
               </div>
             </div>
 
@@ -429,7 +437,8 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
               <Label variant="muted">Size</Label>
               <div className="col-span-2 *:w-full">
                 <InputGroup>
-                  <InputGroupInput
+                  <CssVariableInput
+                    grouped
                     value={fontSizeInput}
                     onChange={(e) => handleFontSizeChange(e.target.value)}
                     stepper
@@ -539,7 +548,8 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
                     </Tooltip>
                   </div>
                 </InputGroupAddon>
-                <InputGroupInput
+                <CssVariableInput
+                  grouped
                   className="pr-0!"
                   value={letterSpacingInput}
                   onChange={(e) => handleLetterSpacingChange(e.target.value)}
@@ -562,7 +572,8 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
                     </Tooltip>
                   </div>
                 </InputGroupAddon>
-                <InputGroupInput
+                <CssVariableInput
+                  grouped variableTypes={['size', 'number', 'percentage']}
                   className="pr-0!"
                   value={lineHeightInput}
                   onChange={(e) => handleLineHeightChange(e.target.value)}
@@ -599,7 +610,7 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
                     <div className="grid grid-cols-3 items-start">
                       <Label variant="muted" className="h-8">Offset</Label>
                       <div className="col-span-2">
-                        <Input
+                        <CssVariableInput
                           stepper
                           min="0"
                           step="1"
@@ -613,7 +624,7 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
                     <div className="grid grid-cols-3 items-start">
                       <Label variant="muted" className="h-8">Thickness</Label>
                       <div className="col-span-2">
-                        <Input
+                        <CssVariableInput
                           stepper
                           min="0"
                           step="1"

@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, memo } from 'react';
 import { Label } from '@/components/ui/label';
+import { formatShadowLength, parseShadowLength } from '@/lib/text-shadow-utils';
+import CssVariableInput from './css-variables/CssVariableInput';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Icon from '@/components/ui/icon';
@@ -55,10 +57,10 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
     id: string;
     position: 'outside' | 'inside';
     color: string;
-    x: number;
-    y: number;
-    blur: number;
-    spread: number;
+    x: number | string;
+    y: number | string;
+    blur: number | string;
+    spread: number | string;
   }
 
   // Parse existing shadows from boxShadow property
@@ -78,10 +80,10 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
         const parts = cleanShadow.split('_');
 
         if (parts.length >= 5) {
-          const x = parseInt(parts[0]) || 0;
-          const y = parseInt(parts[1]) || 0;
-          const blur = parseInt(parts[2]) || 0;
-          const spread = parseInt(parts[3]) || 0;
+          const x = parseShadowLength(parts[0]);
+          const y = parseShadowLength(parts[1]);
+          const blur = parseShadowLength(parts[2]);
+          const spread = parseShadowLength(parts[3]);
           // Color is everything after the 4th underscore
           let color = parts.slice(4).join('_');
           if (color.startsWith('var(--')) {
@@ -291,7 +293,7 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
     const color = shadow.color.startsWith('color:var(')
       ? shadow.color.replace('color:', '')
       : shadow.color;
-    return `${inset}${shadow.x}px_${shadow.y}px_${shadow.blur}px_${shadow.spread}px_${color}`;
+    return `${inset}${formatShadowLength(shadow.x)}_${formatShadowLength(shadow.y)}_${formatShadowLength(shadow.blur)}_${formatShadowLength(shadow.spread)}_${color}`;
   };
 
   // Generate full shadows value for all shadows
@@ -417,26 +419,26 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
     }
   };
 
-  const handleShadowXChange = (value: number) => {
+  const handleShadowXChange = (value: number | string) => {
     updateEditingShadow({ x: value });
   };
 
-  const handleShadowYChange = (value: number) => {
+  const handleShadowYChange = (value: number | string) => {
     updateEditingShadow({ y: value });
   };
 
-  const handleShadowBlurChange = (value: number) => {
+  const handleShadowBlurChange = (value: number | string) => {
     updateEditingShadow({ blur: value });
   };
 
-  const handleShadowSpreadChange = (value: number) => {
+  const handleShadowSpreadChange = (value: number | string) => {
     updateEditingShadow({ spread: value });
   };
 
   // Get display name for shadow
   const getShadowDisplayName = (shadow: Shadow): string => {
     const pos = shadow.position === 'inside' ? 'Inner' : 'Outer';
-    return `${pos} ${shadow.x}px ${shadow.y}px ${shadow.blur}px`;
+    return `${pos} ${formatShadowLength(shadow.x)} ${formatShadowLength(shadow.y)} ${formatShadowLength(shadow.blur)}`;
   };
 
   return (
@@ -554,18 +556,19 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
                           <div className="grid grid-cols-3">
                             <Label variant="muted">X</Label>
                             <div className="col-span-2 grid grid-cols-2 items-center gap-2">
-                              <Input
+                              <CssVariableInput
+                                variableTypes={['size']}
                                 stepper
 
                                 min={-100}
                                 max={100}
                                 step={1}
                                 value={editingShadow.x}
-                                onChange={(e) => handleShadowXChange(parseInt(e.target.value) || 0)}
+                                onChange={(e) => handleShadowXChange(parseShadowLength(e.target.value))}
                               />
                               <Slider
                                 className="flex-1"
-                                value={[editingShadow.x]}
+                                value={[Number(editingShadow.x) || 0]}
                                 onValueChange={(values) => handleShadowXChange(values[0])}
                                 min={-100}
                                 max={100}
@@ -577,18 +580,19 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
                           <div className="grid grid-cols-3">
                             <Label variant="muted">Y</Label>
                             <div className="col-span-2 grid grid-cols-2 items-center gap-2">
-                              <Input
+                              <CssVariableInput
+                                variableTypes={['size']}
                                 stepper
 
                                 min={-100}
                                 max={100}
                                 step={1}
                                 value={editingShadow.y}
-                                onChange={(e) => handleShadowYChange(parseInt(e.target.value) || 0)}
+                                onChange={(e) => handleShadowYChange(parseShadowLength(e.target.value))}
                               />
                               <Slider
                                 className="flex-1"
-                                value={[editingShadow.y]}
+                                value={[Number(editingShadow.y) || 0]}
                                 onValueChange={(values) => handleShadowYChange(values[0])}
                                 min={-100}
                                 max={100}
@@ -600,18 +604,19 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
                           <div className="grid grid-cols-3">
                             <Label variant="muted">Blur</Label>
                             <div className="col-span-2 grid grid-cols-2 items-center gap-2">
-                              <Input
+                              <CssVariableInput
+                                variableTypes={['size']}
                                 stepper
 
                                 min={0}
                                 max={100}
                                 step={1}
                                 value={editingShadow.blur}
-                                onChange={(e) => handleShadowBlurChange(parseInt(e.target.value) || 0)}
+                                onChange={(e) => handleShadowBlurChange(parseShadowLength(e.target.value))}
                               />
                               <Slider
                                 className="flex-1"
-                                value={[editingShadow.blur]}
+                                value={[Number(editingShadow.blur) || 0]}
                                 onValueChange={(values) => handleShadowBlurChange(values[0])}
                                 min={0}
                                 max={100}
@@ -623,18 +628,19 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
                           <div className="grid grid-cols-3">
                             <Label variant="muted">Spread</Label>
                             <div className="col-span-2 grid grid-cols-2 items-center gap-2">
-                              <Input
+                              <CssVariableInput
+                                variableTypes={['size']}
                                 stepper
 
                                 min={0}
                                 max={100}
                                 step={1}
                                 value={editingShadow.spread}
-                                onChange={(e) => handleShadowSpreadChange(parseInt(e.target.value) || 0)}
+                                onChange={(e) => handleShadowSpreadChange(parseShadowLength(e.target.value))}
                               />
                               <Slider
                                 className="flex-1"
-                                value={[editingShadow.spread]}
+                                value={[Number(editingShadow.spread) || 0]}
                                 onValueChange={(values) => handleShadowSpreadChange(values[0])}
                                 min={0}
                                 max={100}

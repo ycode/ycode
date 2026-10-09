@@ -1012,6 +1012,141 @@ export async function uploadFileApi(
 }
 
 // Color Variables API
+type CssVariablesGraphAlias = import('@/types').CssVariablesGraph;
+type CssVariableSetAlias = import('@/types').CssVariableSet;
+type CssVariableSetModeAlias = import('@/types').CssVariableSetMode;
+type CssVariableGroupAlias = import('@/types').CssVariableGroup;
+type CssVariableAlias = import('@/types').CssVariable;
+type CssVariableValueAlias = import('@/types').CssVariableValue;
+type CssVariableTypeAlias = import('@/types').CssVariableType;
+type CssVariableSetActivationKindAlias = import('@/types').CssVariableSetActivationKind;
+
+export const cssVariablesApi = {
+  async getGraph(): Promise<ApiResponse<CssVariablesGraphAlias>> {
+    return apiRequest<CssVariablesGraphAlias>('/ycode/api/css-variables');
+  },
+
+  // Sets
+  async createSet(data: { name: string; activation_kind?: CssVariableSetActivationKindAlias }): Promise<ApiResponse<CssVariableSetAlias>> {
+    return apiRequest<CssVariableSetAlias>('/ycode/api/css-variables/sets', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  async updateSet(id: string, data: { name?: string; activation_kind?: CssVariableSetActivationKindAlias }): Promise<ApiResponse<CssVariableSetAlias>> {
+    return apiRequest<CssVariableSetAlias>(`/ycode/api/css-variables/sets/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+  async deleteSet(id: string): Promise<ApiResponse<{ success: boolean }>> {
+    return apiRequest<{ success: boolean }>(`/ycode/api/css-variables/sets/${id}`, {
+      method: 'DELETE',
+    });
+  },
+  async reorderSets(orderedIds: string[]): Promise<ApiResponse<{ success: boolean }>> {
+    return apiRequest<{ success: boolean }>('/ycode/api/css-variables/sets/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ orderedIds }),
+    });
+  },
+
+  // Modes
+  async createMode(data: { set_id: string; name: string; is_default?: boolean; data_theme?: string | null; min_width?: number | null }): Promise<ApiResponse<CssVariableSetModeAlias>> {
+    return apiRequest<CssVariableSetModeAlias>('/ycode/api/css-variables/modes', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  async updateMode(id: string, data: { name?: string; is_default?: boolean; data_theme?: string | null; min_width?: number | null }): Promise<ApiResponse<CssVariableSetModeAlias>> {
+    return apiRequest<CssVariableSetModeAlias>(`/ycode/api/css-variables/modes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+  async deleteMode(id: string): Promise<ApiResponse<{ success: boolean }>> {
+    return apiRequest<{ success: boolean }>(`/ycode/api/css-variables/modes/${id}`, {
+      method: 'DELETE',
+    });
+  },
+  async reorderModes(orderedIds: string[]): Promise<ApiResponse<{ success: boolean }>> {
+    return apiRequest<{ success: boolean }>('/ycode/api/css-variables/modes/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ orderedIds }),
+    });
+  },
+
+  // Groups
+  async createGroup(data: { set_id: string; name: string }): Promise<ApiResponse<CssVariableGroupAlias>> {
+    return apiRequest<CssVariableGroupAlias>('/ycode/api/css-variables/groups', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  async updateGroup(id: string, data: { name?: string }): Promise<ApiResponse<CssVariableGroupAlias>> {
+    return apiRequest<CssVariableGroupAlias>(`/ycode/api/css-variables/groups/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+  async deleteGroup(id: string): Promise<ApiResponse<{ success: boolean }>> {
+    return apiRequest<{ success: boolean }>(`/ycode/api/css-variables/groups/${id}`, {
+      method: 'DELETE',
+    });
+  },
+  async reorderGroups(orderedIds: string[]): Promise<ApiResponse<{ success: boolean }>> {
+    return apiRequest<{ success: boolean }>('/ycode/api/css-variables/groups/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ orderedIds }),
+    });
+  },
+
+  // Variables (items)
+  async createItem(data: { set_id: string; type: CssVariableTypeAlias; name: string; group_id?: string | null }): Promise<ApiResponse<CssVariableAlias>> {
+    return apiRequest<CssVariableAlias>('/ycode/api/css-variables/items', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  async updateItem(id: string, data: { name?: string; group_id?: string | null; type?: CssVariableTypeAlias }): Promise<ApiResponse<CssVariableAlias>> {
+    return apiRequest<CssVariableAlias>(`/ycode/api/css-variables/items/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+  async deleteItem(id: string): Promise<ApiResponse<{ success: boolean }>> {
+    return apiRequest<{ success: boolean }>(`/ycode/api/css-variables/items/${id}`, {
+      method: 'DELETE',
+    });
+  },
+  async reorderItems(orderedIds: string[]): Promise<ApiResponse<{ success: boolean }>> {
+    return apiRequest<{ success: boolean }>('/ycode/api/css-variables/items/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ orderedIds }),
+    });
+  },
+
+  // Values
+  async setValue(data: { css_variable_id: string; mode_id: string; value: string }): Promise<ApiResponse<CssVariableValueAlias>> {
+    return apiRequest<CssVariableValueAlias>('/ycode/api/css-variables/values', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+  async setValuesBulk(values: Array<{ css_variable_id: string; mode_id: string; value: string }>): Promise<ApiResponse<{ success: boolean }>> {
+    return apiRequest<{ success: boolean }>('/ycode/api/css-variables/values', {
+      method: 'PUT',
+      body: JSON.stringify({ values }),
+    });
+  },
+  async deleteValue(cssVariableId: string, modeId: string): Promise<ApiResponse<{ success: boolean }>> {
+    const params = new URLSearchParams({ css_variable_id: cssVariableId, mode_id: modeId });
+    return apiRequest<{ success: boolean }>(`/ycode/api/css-variables/values?${params.toString()}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 export const colorVariablesApi = {
   async getAll(): Promise<ApiResponse<import('@/types').ColorVariable[]>> {
     return apiRequest<import('@/types').ColorVariable[]>('/ycode/api/color-variables');

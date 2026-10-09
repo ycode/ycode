@@ -46,6 +46,7 @@ const CollectionItemSheet = lazy(() => import('../components/CollectionItemSheet
 const FileManagerDialog = lazy(() => import('../components/FileManagerDialog'));
 const KeyboardShortcutsDialog = lazy(() => import('../components/KeyboardShortcutsDialog'));
 const CreateComponentDialog = lazy(() => import('../components/CreateComponentDialog'));
+const CssVariablesEditorOverlay = lazy(() => import('../components/css-variables/CssVariablesEditorOverlay'));
 const DragPreviewPortal = lazy(() => import('@/components/DragPreviewPortal'));
 
 // Collaboration components (lazy-loaded)
@@ -819,9 +820,9 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
               asyncTasks.push(preloadCollectionsAndItems(response.data.collections));
             }
 
-            // Load color variables
-            const { useColorVariablesStore } = await import('@/stores/useColorVariablesStore');
-            asyncTasks.push(useColorVariablesStore.getState().loadColorVariables());
+            // Load CSS variables graph (covers legacy color variables too via the façade)
+            const { useCssVariablesStore } = await import('@/stores/useCssVariablesStore');
+            asyncTasks.push(useCssVariablesStore.getState().loadGraph());
 
             // Load global variables (available as a binding source everywhere)
             const { useGlobalsStore } = await import('@/stores/useGlobalsStore');
@@ -2431,6 +2432,11 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
         />
       </Suspense>
     )}
+
+    {/* CSS Variables Editor Overlay - opens on top of the design canvas */}
+    <Suspense fallback={null}>
+      <CssVariablesEditorOverlay />
+    </Suspense>
 
     {/* Keyboard Shortcuts Dialog */}
     <Suspense fallback={null}>

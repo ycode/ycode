@@ -27,7 +27,7 @@ import { resolveReferenceFieldsSync } from '@/lib/collection-utils';
 import { extractStyleBlockContents } from '@/lib/parse-head-html';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { useFontsStore } from '@/stores/useFontsStore';
-import { useColorVariablesStore } from '@/stores/useColorVariablesStore';
+import { useCssVariablesStore } from '@/stores/useCssVariablesStore';
 import { usePagesStore } from '@/stores/usePagesStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 
@@ -586,23 +586,35 @@ const Canvas = React.memo(function Canvas({
     injectFontsCss(iframeDoc);
   }, [iframeReady, fontsCss, injectFontsCss]);
 
-  // Inject color variable CSS custom properties into the canvas iframe
-  const colorVarCss = useColorVariablesStore((state) => state.generateCssDeclarations());
+  // Inject CSS variables (colors + sizes + percentages + numbers + fonts) into
+  // the canvas iframe. `version` is bumped by the store on every change so the
+  // selector recomputes only when the graph actually changes.
+  const cssVarsVersion = useCssVariablesStore((state) => state.version);
+  const cssVarsStylesheet = useMemo(
+    () => useCssVariablesStore.getState().generateStylesheet(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cssVarsVersion]
+  );
 
   useEffect(() => {
     if (!iframeReady || !iframeRef.current) return;
     const iframeDoc = iframeRef.current.contentDocument;
     if (!iframeDoc) return;
 
-    const STYLE_ID = 'ycode-color-vars';
+    const STYLE_ID = 'ycode-css-vars';
     let styleEl = iframeDoc.getElementById(STYLE_ID) as HTMLStyleElement | null;
     if (!styleEl) {
       styleEl = iframeDoc.createElement('style');
       styleEl.id = STYLE_ID;
       iframeDoc.head.appendChild(styleEl);
     }
-    styleEl.textContent = colorVarCss;
-  }, [iframeReady, colorVarCss]);
+    styleEl.textContent = cssVarsStylesheet;
+
+    // Remove the legacy `ycode-color-vars` style element if a previous build
+    // left it behind in this iframe.
+    const legacy = iframeDoc.getElementById('ycode-color-vars');
+    if (legacy && legacy !== styleEl) legacy.remove();
+  }, [iframeReady, cssVarsStylesheet]);
 
   // Inject user-defined custom CSS from `<style>` blocks in head custom code
   // so `:root { --x: ... }` variables (and any other CSS) live-preview in the

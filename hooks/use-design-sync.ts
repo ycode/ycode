@@ -384,7 +384,7 @@ export function useDesignSync({
         if (!inheritedClass) return undefined;
 
         const arbitraryMatch = inheritedClass.match(/\[([^\]]+)\]/);
-        if (arbitraryMatch) return arbitraryMatch[1];
+        if (arbitraryMatch) return arbitraryMatch[1].replace(/^(length|percentage|family-name|number):/, '');
 
         return mapClassToDesignValue(inheritedClass, property);
       }
@@ -422,6 +422,7 @@ export function useDesignSync({
       const arbitraryMatch = inheritedClass.match(/\[([^\]]+)\](?:\/(\d+))?/);
       if (arbitraryMatch) {
         let extractedValue = arbitraryMatch[2] ? `${arbitraryMatch[1]}/${arbitraryMatch[2]}` : arbitraryMatch[1];
+        extractedValue = extractedValue.replace(/^(length|percentage|family-name|number):/, '');
         // Strip default units for transform properties so inputs show raw numbers
         if (['rotate', 'skewX', 'skewY'].includes(property) && extractedValue.endsWith('deg')) {
           extractedValue = extractedValue.slice(0, -3);

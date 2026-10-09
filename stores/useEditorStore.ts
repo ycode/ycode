@@ -118,6 +118,8 @@ interface EditorActions {
   setPreviewReturn: (url: string | null, tab?: EditorSidebarTab | null) => void;
   openFileManager: (onSelect?: ((asset: Asset) => void | false) | null, assetId?: string | null, category?: AssetCategoryFilter) => void;
   closeFileManager: () => void;
+  openCssVariablesEditor: () => void;
+  closeCssVariablesEditor: () => void;
   setKeyboardShortcutsOpen: (open: boolean) => void;
   openCreateComponentDialog: (layerId: string, defaultName: string) => void;
   closeCreateComponentDialog: () => void;
@@ -203,6 +205,8 @@ interface EditorStoreWithHistory extends EditorState {
     assetId: string | null;
     category: AssetCategoryFilter;
   };
+  /** Whether the in-builder CSS Variables editor overlay is open */
+  cssVariablesEditorOpen: boolean;
   keyboardShortcutsOpen: boolean;
   createComponentDialog: {
     open: boolean;
@@ -311,6 +315,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     assetId: null,
     category: null,
   },
+  cssVariablesEditorOpen: false,
   keyboardShortcutsOpen: false,
   createComponentDialog: {
     open: false,
@@ -700,6 +705,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       category: null,
     },
   }),
+
+  openCssVariablesEditor: () => set({ cssVariablesEditorOpen: true }),
+  closeCssVariablesEditor: () => set({ cssVariablesEditorOpen: false }),
 
   setKeyboardShortcutsOpen: (open) => set({ keyboardShortcutsOpen: open }),
 

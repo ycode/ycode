@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState, useCallback, memo } from 'react';
-import { Input } from '@/components/ui/input';
+import CssVariableInput from './css-variables/CssVariableInput';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { InputGroup, InputGroupAddon } from '@/components/ui/input-group';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -377,7 +377,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
           <Label variant="muted" className="h-8">Radius</Label>
           <div className="col-span-2 flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <Input
+              <CssVariableInput
                 stepper
                 min="0"
                 step="1"
@@ -401,7 +401,8 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                   <InputGroupAddon>
                     <Icon name="borderTopLeft" className="size-3" />
                   </InputGroupAddon>
-                  <InputGroupInput
+                  <CssVariableInput
+                    grouped
                     stepper
                     min="0"
                     step="1"
@@ -414,7 +415,8 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                   <InputGroupAddon>
                     <Icon name="borderTopLeft" className="size-3 rotate-90" />
                   </InputGroupAddon>
-                  <InputGroupInput
+                  <CssVariableInput
+                    grouped
                     stepper
                     min="0"
                     step="1"
@@ -427,7 +429,8 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                   <InputGroupAddon>
                     <Icon name="borderTopLeft" className="size-3 rotate-270" />
                   </InputGroupAddon>
-                  <InputGroupInput
+                  <CssVariableInput
+                    grouped
                     stepper
                     min="0"
                     step="1"
@@ -440,7 +443,8 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                   <InputGroupAddon>
                     <Icon name="borderTopLeft" className="size-3 rotate-180" />
                   </InputGroupAddon>
-                  <InputGroupInput
+                  <CssVariableInput
+                    grouped
                     stepper
                     min="0"
                     step="1"
@@ -505,7 +509,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                     <Label variant="muted" className="h-8">Width</Label>
                     <div className="col-span-2 flex flex-col gap-2">
                       <div className="flex items-center gap-2">
-                        <Input
+                        <CssVariableInput
                           stepper
                           min="0"
                           step="1"
@@ -526,7 +530,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                       {widthModeToggle.mode === 'individual' && (
                           <div className="grid grid-cols-2 gap-2">
                             <div className="flex flex-col items-start gap-1">
-                              <Input
+                              <CssVariableInput
                                 stepper
                                 min="0"
                                 step="1"
@@ -537,7 +541,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                               <Label className="text-[8px]!" variant="muted">Top</Label>
                             </div>
                             <div className="flex flex-col items-center gap-1">
-                              <Input
+                              <CssVariableInput
                                 stepper
                                 min="0"
                                 step="1"
@@ -548,7 +552,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                               <Label className="text-[8px]!" variant="muted">Right</Label>
                             </div>
                             <div className="flex flex-col items-center gap-1">
-                              <Input
+                              <CssVariableInput
                                 stepper
                                 min="0"
                                 step="1"
@@ -559,7 +563,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                               <Label className="text-[8px]!" variant="muted">Bottom</Label>
                             </div>
                             <div className="flex flex-col items-center gap-1">
-                              <Input
+                              <CssVariableInput
                                 stepper
                                 min="0"
                                 step="1"
@@ -650,7 +654,8 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                               </Tooltip>
                             </div>
                           </InputGroupAddon>
-                          <InputGroupInput
+                          <CssVariableInput
+                            grouped
                             stepper
                             min="0"
                             step="1"
@@ -672,7 +677,8 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                               </Tooltip>
                             </div>
                           </InputGroupAddon>
-                          <InputGroupInput
+                          <CssVariableInput
+                            grouped
                             stepper
                             min="0"
                             step="1"
@@ -757,7 +763,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                     <div className="grid grid-cols-3">
                       <Label variant="muted">Width</Label>
                       <div className="col-span-2">
-                        <Input
+                        <CssVariableInput
                           stepper
                           min="0"
                           step="1"
@@ -787,7 +793,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                     <div className="grid grid-cols-3">
                       <Label variant="muted">Offset</Label>
                       <div className="col-span-2">
-                        <Input
+                        <CssVariableInput
                           stepper
                           step="1"
                           value={outlineOffsetInput}

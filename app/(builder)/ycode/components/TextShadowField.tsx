@@ -2,13 +2,14 @@
 
 import { memo, useCallback } from 'react';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
+import CssVariableInput from './css-variables/CssVariableInput';
 import { Slider } from '@/components/ui/slider';
 import Icon from '@/components/ui/icon';
 import { InputGroup } from '@/components/ui/input-group';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   convertToRgba,
+  parseShadowLength,
   parseTextShadow,
   serializeTextShadow,
   swatchColor,
@@ -42,17 +43,17 @@ const TextShadowField = memo(function TextShadowField({
     updateShadow({ ...shadow, color: convertToRgba(color) });
   }, [shadow, updateShadow]);
 
-  const handleXChange = useCallback((x: number) => {
+  const handleXChange = useCallback((x: number | string) => {
     if (!shadow) return;
     updateShadow({ ...shadow, x });
   }, [shadow, updateShadow]);
 
-  const handleYChange = useCallback((y: number) => {
+  const handleYChange = useCallback((y: number | string) => {
     if (!shadow) return;
     updateShadow({ ...shadow, y });
   }, [shadow, updateShadow]);
 
-  const handleBlurChange = useCallback((blur: number) => {
+  const handleBlurChange = useCallback((blur: number | string) => {
     if (!shadow) return;
     updateShadow({ ...shadow, blur });
   }, [shadow, updateShadow]);
@@ -92,17 +93,18 @@ const TextShadowField = memo(function TextShadowField({
             <div className="grid grid-cols-3">
               <Label variant="muted">X</Label>
               <div className="col-span-2 grid grid-cols-2 items-center gap-2">
-                <Input
+                <CssVariableInput
+                  variableTypes={['size']}
                   stepper
                   min={-20}
                   max={20}
                   step={1}
                   value={shadow.x}
-                  onChange={(e) => handleXChange(parseInt(e.target.value, 10) || 0)}
+                  onChange={(e) => handleXChange(parseShadowLength(e.target.value))}
                 />
                 <Slider
                   className="flex-1"
-                  value={[shadow.x]}
+                  value={[Number(shadow.x) || 0]}
                   onValueChange={(values) => handleXChange(values[0])}
                   min={-20}
                   max={20}
@@ -114,17 +116,18 @@ const TextShadowField = memo(function TextShadowField({
             <div className="grid grid-cols-3">
               <Label variant="muted">Y</Label>
               <div className="col-span-2 grid grid-cols-2 items-center gap-2">
-                <Input
+                <CssVariableInput
+                  variableTypes={['size']}
                   stepper
                   min={-20}
                   max={20}
                   step={1}
                   value={shadow.y}
-                  onChange={(e) => handleYChange(parseInt(e.target.value, 10) || 0)}
+                  onChange={(e) => handleYChange(parseShadowLength(e.target.value))}
                 />
                 <Slider
                   className="flex-1"
-                  value={[shadow.y]}
+                  value={[Number(shadow.y) || 0]}
                   onValueChange={(values) => handleYChange(values[0])}
                   min={-20}
                   max={20}
@@ -136,17 +139,18 @@ const TextShadowField = memo(function TextShadowField({
             <div className="grid grid-cols-3">
               <Label variant="muted">Blur</Label>
               <div className="col-span-2 grid grid-cols-2 items-center gap-2">
-                <Input
+                <CssVariableInput
+                  variableTypes={['size']}
                   stepper
                   min={0}
                   max={30}
                   step={1}
                   value={shadow.blur}
-                  onChange={(e) => handleBlurChange(parseInt(e.target.value, 10) || 0)}
+                  onChange={(e) => handleBlurChange(parseShadowLength(e.target.value))}
                 />
                 <Slider
                   className="flex-1"
-                  value={[shadow.blur]}
+                  value={[Number(shadow.blur) || 0]}
                   onValueChange={(values) => handleBlurChange(values[0])}
                   min={0}
                   max={30}

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Input } from '@/components/ui/input';
+import CssVariableInput from './css-variables/CssVariableInput';
 import { cn } from '@/lib/utils';
 
 interface SpacingValues {
@@ -202,7 +202,7 @@ function SpacingInput({
   }, [onChange]);
 
   return (
-    <Input
+    <CssVariableInput
       ref={inputRef}
       value={value}
       onChange={handleChange}

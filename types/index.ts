@@ -1352,6 +1352,79 @@ export interface ColorVariable {
   updated_at: string;
 }
 
+// CSS Variables System (typed design tokens with sets, modes and groups)
+
+/** Activation strategy for a CSS variable set */
+export type CssVariableSetActivationKind = 'default' | 'theme' | 'breakpoint';
+
+/** Supported CSS variable types */
+export type CssVariableType =
+  | 'color'
+  | 'size'
+  | 'percentage'
+  | 'number'
+  | 'font_family';
+
+export interface CssVariableSet {
+  id: string;
+  name: string;
+  activation_kind: CssVariableSetActivationKind;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CssVariableSetMode {
+  id: string;
+  set_id: string;
+  name: string;
+  is_default: boolean;
+  /** For `activation_kind='theme'`: the value matched by `[data-theme="..."]` */
+  data_theme: string | null;
+  /** For `activation_kind='breakpoint'`: emitted as `@media (min-width: ...)` */
+  min_width: number | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CssVariableGroup {
+  id: string;
+  set_id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CssVariable {
+  id: string;
+  set_id: string;
+  group_id: string | null;
+  type: CssVariableType;
+  name: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CssVariableValue {
+  css_variable_id: string;
+  mode_id: string;
+  value: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Full graph payload shipped to the client and SSR */
+export interface CssVariablesGraph {
+  sets: CssVariableSet[];
+  modes: CssVariableSetMode[];
+  groups: CssVariableGroup[];
+  variables: CssVariable[];
+  values: CssVariableValue[];
+}
+
 export interface VariableType {
   id?: string; // Reference to ComponentVariable.id (for component variable linking)
   type: 'field' | 'asset' | 'video'  | 'dynamic_rich_text' | 'dynamic_text'| 'static_text' | 'pagination';

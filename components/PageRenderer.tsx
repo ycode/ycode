@@ -783,10 +783,14 @@ export default async function PageRenderer({
         />
       )}
 
-      {/* Inject color variable CSS custom properties */}
+      {/* Inject CSS variable custom properties (colors + sizes + percentages +
+          numbers + font families). Prop name kept as `colorVariablesCss` for
+          backward compatibility with overlays; the underlying generator now
+          emits the full typed CSS variables graph (including data-theme and
+          breakpoint blocks). */}
       {colorVariablesCss && (
         <style
-          id="ycode-color-vars"
+          id="ycode-css-vars"
           dangerouslySetInnerHTML={{ __html: colorVariablesCss }}
         />
       )}

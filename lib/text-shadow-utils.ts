@@ -1,7 +1,7 @@
 export interface TextShadow {
-  x: number;
-  y: number;
-  blur: number;
+  x: number | string;
+  y: number | string;
+  blur: number | string;
   color: string;
 }
 
@@ -20,11 +20,19 @@ const NAMED_TEXT_SHADOWS: Record<string, TextShadow> = {
   lg: { x: 0, y: 4, blur: 8, color: 'rgba(0,0,0,0.15)' },
 };
 
+export function formatShadowLength(value: number | string): string {
+  return typeof value === 'number' || /^-?\d*\.?\d+$/.test(value) ? `${value}px` : value;
+}
+
+export function parseShadowLength(value: string): number | string {
+  return /^-?(?:\d+\.?\d*|\.\d+)(?:px)?$/.test(value) ? parseFloat(value) : value;
+}
+
 export function serializeTextShadow(shadow: TextShadow): string {
   const color = shadow.color.startsWith('color:var(')
     ? shadow.color.replace('color:', '')
     : shadow.color;
-  return `${shadow.x}px_${shadow.y}px_${shadow.blur}px_${color}`;
+  return `${formatShadowLength(shadow.x)}_${formatShadowLength(shadow.y)}_${formatShadowLength(shadow.blur)}_${color}`;
 }
 
 export const DEFAULT_TEXT_SHADOW_VALUE = serializeTextShadow(DEFAULT_TEXT_SHADOW);
@@ -41,11 +49,11 @@ export function parseTextShadow(value: string): TextShadow | null {
 
   if (parts.length < 3) return { ...DEFAULT_TEXT_SHADOW };
 
-  const x = parseInt(parts[0], 10) || 0;
-  const y = parseInt(parts[1], 10) || 0;
+  const x = parseShadowLength(parts[0]);
+  const y = parseShadowLength(parts[1]);
 
   const thirdLooksLikeColor = /^(#|rgb|hsl|var|color:)/i.test(parts[2]);
-  if (thirdLooksLikeColor) {
+  if (thirdLooksLikeColor && parts.length === 3) {
     return {
       x,
       y,
@@ -54,7 +62,7 @@ export function parseTextShadow(value: string): TextShadow | null {
     };
   }
 
-  const blur = parseInt(parts[2], 10) || 0;
+  const blur = parseShadowLength(parts[2]);
   const color = parts.length > 3
     ? restoreVarColor(parts.slice(3).join('_'))
     : DEFAULT_TEXT_SHADOW.color;

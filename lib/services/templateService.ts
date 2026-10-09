@@ -22,6 +22,12 @@ const TABLES_TO_TRUNCATE = [
   'page_layers',
   'pages',
   'page_folders',
+  // Typed CSS variables (children first so FKs cascade cleanly)
+  'css_variable_values',
+  'css_variables',
+  'css_variable_groups',
+  'css_variable_set_modes',
+  'css_variable_sets',
   'color_variables',
   'fonts',
 ];

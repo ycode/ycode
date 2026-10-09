@@ -12,6 +12,7 @@ import { registerStyleTools } from '@/lib/mcp/tools/styles';
 import { registerAssetTools } from '@/lib/mcp/tools/assets';
 import { registerAssetFolderTools } from '@/lib/mcp/tools/asset-folders';
 import { registerComponentTools } from '@/lib/mcp/tools/components';
+import { registerCssVariableTools } from '@/lib/mcp/tools/css-variables';
 import { registerColorVariableTools } from '@/lib/mcp/tools/color-variables';
 import { registerFontTools } from '@/lib/mcp/tools/fonts';
 import { registerLocaleTools } from '@/lib/mcp/tools/locales';
@@ -53,6 +54,7 @@ const TOOL_REGISTRARS: Array<[ToolRegistrar, AgentToolGroup]> = [
   [registerAssetFolderTools, 'site'],
   [registerComponentTools, 'components'],
   [registerColorVariableTools, 'core'],
+  [registerCssVariableTools, 'styles'],
   [registerFontTools, 'core'],
   [registerLocaleTools, 'localization'],
   [registerFormTools, 'site'],
