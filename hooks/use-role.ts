@@ -29,7 +29,7 @@ export function useRole() {
     role,
     isEditor: role === 'editor',
     canEditStructure: canEditStructure(role),
-    canEditContent: true,
+    canEditContent: role !== 'viewer',
     canManageMembers: canManageMembers(role),
     canManageSettings: canManageSettings(role),
   };

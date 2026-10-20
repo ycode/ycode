@@ -4,7 +4,7 @@
  * Role hierarchy: owner > admin > designer > editor
  */
 
-export const ALL_ROLES = ['owner', 'admin', 'designer', 'editor'] as const;
+export const ALL_ROLES = ['owner', 'admin', 'designer', 'editor', 'viewer'] as const;
 export type UserRole = (typeof ALL_ROLES)[number];
 
 export const ASSIGNABLE_ROLES = ['admin', 'designer', 'editor'] as const;
@@ -24,9 +24,9 @@ export function canManageMembers(role: UserRole): boolean {
 }
 
 export function canEditStructure(role: UserRole): boolean {
-  return role !== 'editor';
+  return role !== 'editor' && role !== 'viewer';
 }
 
 export function canManageSettings(role: UserRole): boolean {
-  return role !== 'editor';
+  return role !== 'editor' && role !== 'viewer';
 }

@@ -19,6 +19,7 @@ const globalForKnex = globalThis as unknown as { __knexInstance?: Knex };
  * Get or create knex instance
  */
 export async function getKnexClient(): Promise<Knex> {
+  if (process.env.COURSEY_PLATFORM === 'true') return (await import('@/coursey/runtime')).siteSql();
   if (globalForKnex.__knexInstance) {
     return globalForKnex.__knexInstance;
   }

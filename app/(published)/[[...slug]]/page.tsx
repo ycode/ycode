@@ -1,6 +1,6 @@
 import { notFound, redirect, permanentRedirect } from 'next/navigation';
 import { connection } from 'next/server';
-import { unstable_cache } from 'next/cache';
+import { unstable_cache } from '@/coursey/cache';
 import { addCacheTag } from '@vercel/functions';
 import Link from 'next/link';
 import type { Metadata } from 'next';
@@ -22,6 +22,7 @@ import { matchRedirect } from '@/lib/redirect-utils';
 import type { PageFolder, Translation, Redirect as RedirectType } from '@/types';
 
 // Static by default for performance, dynamic only when pagination is requested
+export const dynamic = 'force-dynamic';
 export const revalidate = false; // Cache indefinitely until publish invalidates
 export const dynamicParams = true;
 
@@ -31,6 +32,7 @@ export const dynamicParams = true;
  * Includes both default locale paths and translated paths for all locales
  */
 export async function generateStaticParams() {
+  if (process.env.COURSEY_PLATFORM === 'true') return [];
   try {
     const supabase = await getSupabaseAdmin();
 

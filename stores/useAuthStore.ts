@@ -5,8 +5,7 @@
  */
 
 import { create } from 'zustand';
-import { createBrowserClient } from '../lib/supabase-browser';
-import { extractRoleFromUser } from '@/lib/roles';
+import { createBrowserClient, roleForSession } from '../lib/supabase-browser';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthState {
@@ -70,15 +69,15 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({
         user: user ?? null,
         session: user ? session : null,
-        role: extractRoleFromUser(user),
+        role: await roleForSession(user, session?.access_token),
         initialized: true,
       });
 
-      supabase.auth.onAuthStateChange((_event, session) => {
+      supabase.auth.onAuthStateChange(async (_event, session) => {
         set({
           user: session?.user ?? null,
           session,
-          role: extractRoleFromUser(session?.user ?? null),
+          role: await roleForSession(session?.user ?? null, session?.access_token),
         });
       });
     } catch (error) {
@@ -130,7 +129,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({
         user: data.user,
         session: data.session,
-        role: extractRoleFromUser(data.user),
+        role: await roleForSession(data.user, data.session?.access_token),
         loading: false,
       });
 
@@ -169,7 +168,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({
         user: data.user,
         session: data.session,
-        role: extractRoleFromUser(data.user),
+        role: await roleForSession(data.user, data.session?.access_token),
         loading: false,
       });
 

@@ -1,3 +1,4 @@
+import { platformProxy } from '@/coursey/proxy';
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
@@ -152,6 +153,7 @@ async function verifyApiAuth(request: NextRequest): Promise<NextResponse | null>
 }
 
 export async function proxy(request: NextRequest) {
+  if (process.env.COURSEY_PLATFORM === 'true') return platformProxy(request);
   const { pathname } = request.nextUrl;
 
   // MCP endpoints use their own token-based authentication — skip session auth.

@@ -1,4 +1,5 @@
 export async function register() {
+  if (process.env.COURSEY_PLATFORM === 'true') return;
   if (process.env.NEXT_RUNTIME !== 'nodejs') {
     return;
   }

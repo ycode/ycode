@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { unstable_cache } from 'next/cache';
+import { unstable_cache } from '@/coursey/cache';
 import { buildAllPagesTag, buildRouteTag } from '@/lib/cache-tags';
 import { fetchErrorPage, fetchPageByPathForMetadata, slimPageData } from '@/lib/page-fetcher';
 import type { PageData } from '@/lib/page-fetcher';

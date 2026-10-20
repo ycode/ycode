@@ -40,8 +40,9 @@ export async function GET() {
 
     return noCache({
       data: {
-        url: parsed.projectUrl,
+        url: process.env.COURSEY_PLATFORM === 'true' ? process.env.COURSEY_SUPABASE_PUBLIC_URL : parsed.projectUrl,
         anonKey: parsed.anonKey,
+        platform: process.env.COURSEY_PLATFORM === 'true',
       },
     });
   } catch (error) {

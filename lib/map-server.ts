@@ -10,6 +10,7 @@ import type { MapProvider } from '@/types';
 
 /** Resolve Mapbox access token from env var or app_settings */
 export async function getMapboxAccessToken(): Promise<string | null> {
+  if(process.env.COURSEY_PLATFORM === 'true') return null;
   const envToken = process.env.MAPBOX_ACCESS_TOKEN;
   if (envToken) return envToken;
 
@@ -19,6 +20,7 @@ export async function getMapboxAccessToken(): Promise<string | null> {
 
 /** Resolve Google Maps Embed API key from env var or app_settings */
 export async function getGoogleMapsEmbedApiKey(): Promise<string | null> {
+  if(process.env.COURSEY_PLATFORM === 'true') return null;
   const envKey = process.env.GOOGLE_MAPS_EMBED_API_KEY;
   if (envKey) return envKey;
 

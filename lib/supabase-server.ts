@@ -62,6 +62,7 @@ const globalForSupabase = globalThis as unknown as {
  * orphan any in-flight requests on the old client.
  */
 export async function getSupabaseAdmin(tenantId?: string): Promise<SupabaseClient | null> {
+  if (process.env.COURSEY_PLATFORM === 'true') return (await import('@/coursey/runtime')).siteClient();
   const creds = await getSupabaseCredentials();
 
   if (!creds) {

@@ -5,7 +5,7 @@
 
 import 'server-only';
 
-import { unstable_cache } from 'next/cache';
+import { unstable_cache } from '@/coursey/cache';
 import { buildAllPagesTag, buildGlobalSettingsTag } from '@/lib/cache-tags';
 import { htmlLangFromLocales } from '@/lib/html-lang';
 import { getAllLocales } from '@/lib/repositories/localeRepository';

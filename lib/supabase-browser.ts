@@ -13,7 +13,7 @@ import { createBrowserClient as createSupabaseBrowserClient } from '@supabase/ss
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 let browserClient: SupabaseClient | null = null;
-let configPromise: Promise<{ url: string; anonKey: string } | null> | null = null;
+let configPromise: Promise<{ url: string; anonKey: string; platform?: boolean } | null> | null = null;
 
 /**
  * Reset cached client and config.
@@ -29,7 +29,7 @@ export function resetBrowserClient(): void {
  * Get config from API endpoint.
  * Cached to avoid multiple requests. Returns null if not configured (404).
  */
-async function getSupabaseConfig(): Promise<{ url: string; anonKey: string } | null> {
+async function getSupabaseConfig(): Promise<{ url: string; anonKey: string; platform?: boolean } | null> {
   if (!configPromise) {
     configPromise = fetch('/ycode/api/supabase/config')
       .then(async (res) => {
@@ -69,7 +69,7 @@ async function getOrCreateClient(): Promise<SupabaseClient | null> {
   const config = await getSupabaseConfig();
   if (!config) return null;
 
-  browserClient = createSupabaseBrowserClient(config.url, config.anonKey);
+  browserClient = createSupabaseBrowserClient(config.url, config.anonKey, config.platform ? {cookieOptions:{name:'coursey-auth',sameSite:'lax',secure:window.location.protocol==='https:'}} : {});
   return browserClient;
 }
 
@@ -93,4 +93,14 @@ export async function createClient(): Promise<SupabaseClient> {
   }
 
   return client;
+}
+
+/** UI role display follows the live site membership; server/RLS remain authoritative. */
+export async function roleForSession(user: {app_metadata?:Record<string,unknown>} | null, token?:string):Promise<string|null> {
+  if(!user) return null;
+  const config=await getSupabaseConfig();
+  if(!config?.platform) return (user.app_metadata?.role as string)||null;
+  const response=await fetch('/coursey/api/context',{cache:'no-store',headers:token?{Authorization:`Bearer ${token}`}:{}});
+  if(!response.ok) return null;
+  return (await response.json()).role;
 }

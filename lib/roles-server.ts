@@ -20,6 +20,10 @@ export interface CallerInfo {
  * Returns null if not authenticated.
  */
 export async function getCallerInfo(): Promise<CallerInfo | null> {
+  if(process.env.COURSEY_PLATFORM === 'true') {
+    try {const c=await (await import('@/coursey/runtime')).requireSite(); return {userId:c.userId!,role:c.role as UserRole};}
+    catch {return null;}
+  }
   const auth = await getAuthUser();
   if (!auth) return null;
 

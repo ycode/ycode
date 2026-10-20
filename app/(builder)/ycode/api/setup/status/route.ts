@@ -35,6 +35,7 @@ async function hasAuthUsers(): Promise<boolean> {
  * Also returns is_setup_complete when config + migrations + admin user exist.
  */
 export async function GET() {
+  if (process.env.COURSEY_PLATFORM === 'true') return noCache({is_configured:true,is_setup_complete:true,is_vercel:false});
   try {
     const config = await credentials.get<SupabaseConfig>('supabase_config');
     const isVercel = process.env.VERCEL === '1';

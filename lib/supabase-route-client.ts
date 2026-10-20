@@ -20,6 +20,7 @@ export async function createRouteClient() {
   const cookieStore = await cookies();
 
   return createServerClient(parsed.projectUrl, parsed.anonKey, {
+      ...(process.env.COURSEY_PLATFORM === 'true' ? {cookieOptions:{name:'coursey-auth',sameSite:'lax' as const,secure:process.env.NODE_ENV==='production'}} : {}),
     cookies: {
       get(name: string) {
         return cookieStore.get(name)?.value;

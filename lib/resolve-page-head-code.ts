@@ -12,7 +12,7 @@
 
 import 'server-only';
 
-import { unstable_cache } from 'next/cache';
+import { unstable_cache } from '@/coursey/cache';
 import { getBodyClasses } from '@/lib/body-classes';
 import { buildAllPagesTag, buildRouteTag } from '@/lib/cache-tags';
 import { shouldEmitHreflang } from '@/lib/document-seo-links';

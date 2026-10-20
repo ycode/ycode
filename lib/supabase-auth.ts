@@ -28,6 +28,7 @@ export async function getAuthUser(): Promise<AuthResult | null> {
     const cookieStore = await cookies();
 
     const client = createServerClient(parsed.projectUrl, parsed.anonKey, {
+      ...(process.env.COURSEY_PLATFORM === 'true' ? {cookieOptions:{name:'coursey-auth',sameSite:'lax' as const,secure:process.env.NODE_ENV==='production'}} : {}),
       cookies: {
         getAll() {
           return cookieStore.getAll();

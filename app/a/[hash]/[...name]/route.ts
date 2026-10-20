@@ -131,7 +131,9 @@ export async function GET(
       upstreamHeaders.Range = rangeHeader;
     }
 
-    const response = await fetch(urlData.publicUrl, { headers: upstreamHeaders });
+    const response = process.env.COURSEY_PLATFORM === 'true'
+      ? await (async () => { const {data,error}=await supabase.storage.from(STORAGE_BUCKET).download(asset.storage_path!); return new Response(error?null:data,{status:error?404:200}); })()
+      : await fetch(urlData.publicUrl, { headers: upstreamHeaders });
     if (!response.ok && response.status !== 206) {
       return new Response('Not found', { status: 404 });
     }

@@ -75,3 +75,4 @@ release.sh
 coursey/test-results/
 
 __pycache__/
+coursey/tests/browser/node_modules/

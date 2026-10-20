@@ -26,6 +26,11 @@ const IS_VERCEL = process.env.VERCEL === '1';
  * When omitted, the API URL is derived from the project ref in the connection string.
  */
 function getSupabaseConfigFromEnv(): SupabaseConfig | null {
+  if (process.env.COURSEY_PLATFORM === 'true') {
+    return {anonKey: process.env.SUPABASE_PUBLISHABLE_KEY!, serviceRoleKey: process.env.SUPABASE_PUBLISHABLE_KEY!,
+      connectionUrl: process.env.COURSEY_DATABASE_URL!, dbPassword: new URL(process.env.COURSEY_DATABASE_URL!).password,
+      supabaseUrl: process.env.SUPABASE_URL!};
+  }
   const anonKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY;
   const secretKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   const connectionUrl = process.env.SUPABASE_CONNECTION_URL;

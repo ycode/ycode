@@ -77,7 +77,7 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
+            value: process.env.COURSEY_PLATFORM === 'true' ? 'private, no-store' : 'public, max-age=31536000, immutable',
           },
         ],
       },

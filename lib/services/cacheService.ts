@@ -136,6 +136,7 @@ export async function invalidatePages(routePaths: string[]): Promise<boolean> {
  * Invalidates the root layout which cascades to all pages
  */
 export async function clearAllCache(): Promise<void> {
+  if(process.env.COURSEY_PLATFORM === 'true') return;
   try {
     if (process.env.VERCEL === '1') {
       // Vercel: direct CDN purge by the 'all-pages' tag set on every page
@@ -812,7 +813,7 @@ export async function warmRoutes(
   routes: string[],
   request: Request,
 ): Promise<{ warmed: number; total: number } | null> {
-  if (process.env.VERCEL !== '1' || routes.length === 0) return null;
+  if (process.env.COURSEY_PLATFORM === 'true' || process.env.VERCEL !== '1' || routes.length === 0) return null;
 
   const total = routes.length;
   const result = await warmRouteChain(routes, 0, request);
