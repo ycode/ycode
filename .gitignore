@@ -70,3 +70,8 @@ next-env.d.ts
 
 # scripts
 release.sh
+
+# Coursey isolated development outputs
+coursey/test-results/
+
+__pycache__/

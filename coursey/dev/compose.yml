@@ -1,0 +1,87 @@
+name: coursey-ycode-dev
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: ${DEV_DATABASE_PASSWORD:?generate development secrets first}
+      POSTGRES_DB: coursey_dev
+    volumes:
+      - database:/var/lib/postgresql
+      - ./init.sql:/docker-entrypoint-initdb.d/01-coursey.sql:ro,z
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U postgres -d coursey_dev']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  auth:
+    image: supabase/gotrue:v2.197.0
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: "9999"
+      API_EXTERNAL_URL: http://127.0.0.1:54329/auth/v1
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${DEV_DATABASE_PASSWORD}@db:5432/coursey_dev
+      GOTRUE_SITE_URL: http://alpha.localhost:3310
+      GOTRUE_URI_ALLOW_LIST: http://*.localhost:3310/**
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_JWT_SECRET: ${DEV_JWT_SECRET}
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+  rest:
+    image: postgrest/postgrest:v14.18
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${DEV_DATABASE_PASSWORD}@db:5432/coursey_dev
+      PGRST_DB_SCHEMAS: coursey_api,site_alpha,site_beta,site_alpha_two
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${DEV_JWT_SECRET}
+      PGRST_DB_EXTRA_SEARCH_PATH: public
+  storage:
+    image: supabase/storage-api:v1.81.0
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      ANON_KEY: ${DEV_ANON_KEY}
+      SERVICE_KEY: ${DEV_SERVICE_KEY}
+      AUTH_JWT_SECRET: ${DEV_JWT_SECRET}
+      POSTGREST_URL: http://rest:3000
+      DATABASE_URL: postgres://postgres:${DEV_DATABASE_PASSWORD}@db:5432/coursey_dev
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      GLOBAL_S3_BUCKET: coursey-dev
+      REGION: local
+      TENANT_ID: coursey-dev
+      FILE_SIZE_LIMIT: "52428800"
+      ENABLE_IMAGE_TRANSFORMATION: "false"
+    volumes:
+      - objects:/var/lib/storage
+  gateway:
+    image: node:22-bookworm
+    command: [node, /gateway.mjs]
+    volumes: ['./gateway.mjs:/gateway.mjs:ro,z']
+    ports: ['127.0.0.1:54329:8000']
+  web:
+    image: node:22-bookworm
+    user: '1000:1000'
+    working_dir: /workspace
+    command: [npm, run, dev, --, --hostname, 0.0.0.0]
+    volumes: ['../../:/workspace:z']
+    ports: ['127.0.0.1:3310:3002']
+    environment:
+      COURSEY_PLATFORM: "true"
+      COURSEY_DATABASE_URL: postgres://coursey_runtime:${DEV_DATABASE_PASSWORD}@db:5432/coursey_dev
+      SUPABASE_URL: http://gateway:8000
+      COURSEY_SUPABASE_PUBLIC_URL: http://127.0.0.1:54329
+      SUPABASE_PUBLISHABLE_KEY: ${DEV_ANON_KEY}
+      # Runtime has neither service-role key nor operator database credentials.
+      NEXT_TELEMETRY_DISABLED: "1"
+volumes:
+  database:
+  objects:
