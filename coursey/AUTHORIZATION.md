@@ -39,3 +39,8 @@ AI/integrations/webhooks/cron, arbitrary code, password-protected visitor pages,
 and public forms must fail closed in platform mode. Do not expose legacy public
 schema tables. Disable shared caches until site/auth dimensions and invalidation
 are covered. Never use this development stack with production credentials/data.
+
+Implementation status: platform_admins reserves explicit platform-user identities.
+This milestone has no web provisioning/admin API or automatic support bypass.
+The operator-only CLI is authorized by a separate migration-role connection;
+customer HTTP requests never receive that credential or role.

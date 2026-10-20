@@ -171,10 +171,11 @@ class Isolation(unittest.TestCase):
             code,data,_=request('/assets?id=eq.'+asset['id'],'PATCH',{'filename':'stolen'},user=other,schema='site_'+site)
             self.assertEqual(code,204)
             self.assertEqual(request('/assets?id=eq.'+asset['id'],user=site,schema='site_'+site)[1][0]['filename'],asset['filename'])
-            # Explicitly publish this asset metadata through its site's direct policy.
-            published={**asset,'is_published':True}
-            code,data,_=request('/assets','POST',published,user=site,schema='site_'+site)
-            self.assertEqual(code,201,data)
+            # Use native full publication, including its privileged/raw-SQL paths.
+            before=request('/assets?is_published=eq.true',user=other,schema='site_'+other)[1]
+            code,data,_=request('/ycode/api/publish','POST',{'publishAll':True},user=site,site=site)
+            self.assertEqual(code,200,data)
+            self.assertEqual(request('/assets?is_published=eq.true',user=other,schema='site_'+other)[1],before)
             self.assertEqual(request(assetpath,site=site)[1],marker)
             self.assertNotEqual(storage('/object/site_'+site+'/'+asset['storage_path'],'PUT',b'overwrite',user=site)[0],200)
             storage('/object/site_'+site,'DELETE',{'prefixes':[asset['storage_path']]},user=site)
@@ -235,6 +236,23 @@ class Isolation(unittest.TestCase):
         self.assertEqual(request('/rpc/set_member','POST',{'target':STATE['sites']['alpha'],'member':outsider,'new_role':'owner'},user='outsider',schema='coursey_api')[0],403)
         self.assertEqual(request('/ycode/api/pages',extra={'Authorization':'Bearer forged'})[0],404)
         self.assertEqual(request('/ycode/api/pages','POST',{},user='alpha',extra={'Origin':'http://beta.localhost:3310'})[0],403)
+
+    def test_11_concurrent_site_publication_and_cache_separation(self):
+        from concurrent.futures import ThreadPoolExecutor
+        markers={site:'Concurrent-'+site+'-'+uuid.uuid4().hex[:8] for site in ['alpha','beta']}
+        def publish(site):
+            code,data,_=request('/ycode/api/pages?is_index=true',user=site,site=site)
+            page=next(p for p in data['data'] if p['is_index'] and not p['page_folder_id'])
+            layers=[{'id':'body','name':'body','children':[{'id':str(uuid.uuid4()),'name':'text','variables':{'text':{
+                'type':'dynamic_rich_text','data':{'content':{'type':'doc','content':[{'type':'paragraph','content':[{'type':'text','text':markers[site]}]}]}}}}}]}]
+            self.assertEqual(request('/ycode/api/layers?page_id='+page['id'],'PUT',{'layers':layers},user=site,site=site)[0],200)
+            self.assertEqual(request('/ycode/api/css/generate','POST',{},user=site,site=site)[0],200)
+            self.assertEqual(request('/ycode/api/publish','POST',{'pageIds':[page['id']]},user=site,site=site)[0],200)
+        with ThreadPoolExecutor(max_workers=2) as pool:list(pool.map(publish,['alpha','beta']))
+        for repeat in range(3):
+            for site,other in [('alpha','beta'),('beta','alpha')]:
+                code,html,_=request('/',site=site)
+                self.assertEqual(code,200);self.assertIn(markers[site],html);self.assertNotIn(markers[other],html)
 
     def test_06_unknown_host_and_disabled_surface(self):
         self.assertEqual(request('/ycode/api/pages',user='alpha',site='unknown')[0],404)

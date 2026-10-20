@@ -49,7 +49,7 @@ creation access is available; local implementation is complete for this slice.
 
 | Check | Result |
 | --- | --- |
-| Real Auth + PostgREST + native Next HTTP scenarios | 10 passed |
+| Real Auth + PostgREST + native Next HTTP scenarios | 11 passed |
 | Actual migrated-table RLS/role/FK scenarios | 5 passed |
 | Chromium native login/editor/cookie reload | Passed for A and B |
 | Upstream Ycode suite | 253 tests passed, no failures/skips |
@@ -70,6 +70,10 @@ CMS coverage includes independent collections/fields/items, allowed editor value
 changes, denied viewer changes, no cross-client value mutation and rejection of
 foreign-site field relationships. Direct SQL tests cover 13 native content tables
 in both directions, RLS catalog enforcement and runtime privilege restrictions.
+
+Native full publication also publishes uploaded assets and leaves the other site's
+published assets unchanged. Concurrent A/B page publication and repeated public
+reads retain the correct site's content with shared content caches bypassed.
 
 Storage tests have positive controls: owners can upload/update/delete drafts, so
 negative results are not merely broken endpoints. Anonymous/private reads, cross-
@@ -93,7 +97,7 @@ are not exhaustively end-to-end tested, even though they use schema/RLS boundari
 Forms, Realtime, MCP, API keys, AI, external integrations/import/export, global Auth
 user administration, webhook and cron flows are disabled; these must not be
 silently enabled by a future upstream merge. Shared caches remain bypassed. Real
-DNS verification/TLS/cutover, concurrent publication/revocation, production load
+DNS verification/TLS/cutover, concurrent revocation stress, production load
 and resource limits, legacy data import, all-site schema upgrades, restore drills
 and CCPM provisioning/SSO are not delivered. Reserved platform-admin records do
 not yet implement a management API.
@@ -108,7 +112,7 @@ in [AUTHORIZATION.md](AUTHORIZATION.md) and [UPSTREAM.md](UPSTREAM.md).
 ## Next concrete implementation step
 
 Close the custom-embed/HTML execution surface with explicit capability gates and
-XSS/CSP regression tests, then add concurrent A/B publish and membership-revocation
-checks. After those pass, build a restore-tested legacy-site import/all-site upgrade
+XSS/CSP regression tests, then add membership-revocation race/stress
+checks beyond the passing concurrent A/B publication scenario. After those pass, build a restore-tested legacy-site import/all-site upgrade
 runner and connect operator provisioning to CCPM. Do not cut production over or
 invite real clients before those gaps have been resolved and reviewed.
