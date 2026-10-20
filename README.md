@@ -60,3 +60,10 @@ To ensure the Ycode community is welcoming to all, please review and abide by ou
 [discord]: https://discord.gg/xadfw2DV4q
 [contributing]: https://github.com/ycode/ycode/blob/main/CONTRIBUTING.md
 [coc]: https://github.com/ycode/ycode/blob/main/CODE_OF_CONDUCT.md
+
+## Coursey Creative self-hosted fork
+
+This branch adds an isolated multi-site development platform on one shared database.
+See [the milestone report](coursey/MILESTONE-1.md), [authorization contract](coursey/AUTHORIZATION.md),
+and [development/deployment runbook](coursey/DEPLOYMENT.md). Paid Ycode Cloud is outside this fork's scope.
+The upstream MIT license and notices are retained. This development milestone is not production-ready.
