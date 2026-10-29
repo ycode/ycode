@@ -304,7 +304,7 @@ export default function ChatComposer({
     editorProps: {
       attributes: {
         class:
-          'ai-chat-composer max-h-48 min-h-[84px] overflow-y-auto px-3 pt-2.5 pb-1 text-xs leading-relaxed focus:outline-none',
+          'ai-chat-composer max-h-48 min-h-[84px] overflow-y-auto px-3 pt-2.5 pb-1 text-xs leading-relaxed wrap-anywhere focus:outline-none',
       },
       handleKeyDown: (_view, event) => {
         if (mentionActiveRef.current && mentionResultsRef.current.length > 0) {
