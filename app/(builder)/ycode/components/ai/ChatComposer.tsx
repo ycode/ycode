@@ -98,9 +98,12 @@ function fileToImageAttachment(file: File): Promise<ImageAttachment | null> {
  * deduped list of mentions the user referenced via pills. */
 function editorToMessage(editor: Editor): { text: string; mentions: Mention[] } {
   const { doc } = editor.state;
-  const text = doc.textBetween(0, doc.content.size, '\n', (leaf) =>
-    leaf.type.name === 'layerMention' ? `@${leaf.attrs.label}` : '',
-  );
+  const text = doc.textBetween(0, doc.content.size, '\n', (leaf) => {
+    if (leaf.type.name === 'layerMention') return `@${leaf.attrs.label}`;
+    // Without this a Shift+Enter after a pasted URL glues the next line onto it.
+    if (leaf.type.name === 'hardBreak') return '\n';
+    return '';
+  });
   const seen = new Set<string>();
   const mentions: Mention[] = [];
   doc.descendants((node) => {
