@@ -98,9 +98,12 @@ function fileToImageAttachment(file: File): Promise<ImageAttachment | null> {
  * deduped list of mentions the user referenced via pills. */
 function editorToMessage(editor: Editor): { text: string; mentions: Mention[] } {
   const { doc } = editor.state;
-  const text = doc.textBetween(0, doc.content.size, '\n', (leaf) =>
-    leaf.type.name === 'layerMention' ? `@${leaf.attrs.label}` : '',
-  );
+  const text = doc.textBetween(0, doc.content.size, '\n', (leaf) => {
+    if (leaf.type.name === 'layerMention') return `@${leaf.attrs.label}`;
+    // Without this a Shift+Enter after a pasted URL glues the next line onto it.
+    if (leaf.type.name === 'hardBreak') return '\n';
+    return '';
+  });
   const seen = new Set<string>();
   const mentions: Mention[] = [];
   doc.descendants((node) => {
@@ -304,7 +307,7 @@ export default function ChatComposer({
     editorProps: {
       attributes: {
         class:
-          'ai-chat-composer max-h-48 min-h-[84px] overflow-y-auto px-3 pt-2.5 pb-1 text-xs leading-relaxed focus:outline-none',
+          'ai-chat-composer max-h-48 min-h-[84px] overflow-y-auto px-3 pt-2.5 pb-1 text-xs leading-relaxed wrap-anywhere focus:outline-none',
       },
       handleKeyDown: (_view, event) => {
         if (mentionActiveRef.current && mentionResultsRef.current.length > 0) {
