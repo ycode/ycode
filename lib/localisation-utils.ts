@@ -488,6 +488,71 @@ function extractMediaTranslatableItems(
   }
 }
 
+/** Custom attributes whose values are human-readable text, so they can be translated. */
+const TRANSLATABLE_ATTRIBUTES = new Set([
+  'aria-label',
+  'aria-description',
+  'aria-roledescription',
+  'aria-placeholder',
+  'aria-valuetext',
+  'title',
+  'alt',
+  'placeholder',
+]);
+
+/** Whether a custom attribute carries text that should be translated per locale. */
+export function isTranslatableAttribute(name: string): boolean {
+  return TRANSLATABLE_ATTRIBUTES.has(name.toLowerCase());
+}
+
+/**
+ * Extract translatable custom attribute values (`aria-label`, `title`, ...)
+ * from a single layer, keyed `layer:<layerId>:attribute:<name>`.
+ */
+function extractAttributeTranslatableItems(
+  layer: Layer,
+  sourceType: 'page' | 'component',
+  sourceId: string,
+  items: TranslatableItem[]
+): void {
+  const attributes = layer.settings?.customAttributes;
+  if (!attributes) return;
+
+  for (const [name, value] of Object.entries(attributes)) {
+    if (!isTranslatableAttribute(name) || typeof value !== 'string' || !value.trim()) continue;
+    items.push({
+      key: `${sourceType}:${sourceId}:layer:${layer.id}:attribute:${name}`,
+      source_type: sourceType,
+      source_id: sourceId,
+      content_key: `layer:${layer.id}:attribute:${name}`,
+      content_type: 'text',
+      content_value: value.trim(),
+      info: { icon: getLayerIcon(layer), label: `${getLayerName(layer)} (${name})` },
+    });
+  }
+}
+
+/**
+ * Return the layer's custom attributes with translated values, or null when
+ * nothing was translated.
+ */
+function translateCustomAttributes(
+  attributes: Record<string, string> | undefined,
+  lookup: (name: string) => string | undefined
+): Record<string, string> | null {
+  if (!attributes) return null;
+
+  let translated: Record<string, string> | null = null;
+  for (const name of Object.keys(attributes)) {
+    if (!isTranslatableAttribute(name)) continue;
+    const value = lookup(name);
+    if (!value) continue;
+    translated = translated || { ...attributes };
+    translated[name] = value;
+  }
+  return translated;
+}
+
 /**
  * Extract translatable items from a component instance's `componentOverrides`.
  *
@@ -628,6 +693,7 @@ function extractLayerTranslatableItems(
     }
 
     extractMediaTranslatableItems(layer, sourceType, sourceId, items);
+    extractAttributeTranslatableItems(layer, sourceType, sourceId, items);
 
     // Component instance overrides are translated per instance, scoped to the
     // page or component that holds the instance.
@@ -1137,6 +1203,18 @@ export function injectTranslatedText(
       } as Layer['variables'];
     }
 
+    // 3. Inject translated custom attribute values (aria-label, title, ...)
+    const translatedAttributes = translateCustomAttributes(
+      layer.settings?.customAttributes,
+      name => getTranslationValue(
+        getTranslationByKey(translations, buildLayerTranslationKey(pageId, `layer:${translationLayerId}:attribute:${name}`, masterComponentId)),
+        valueOptions
+      )
+    );
+    if (translatedAttributes) {
+      updates.settings = { ...layer.settings, customAttributes: translatedAttributes };
+    }
+
     if (layer.children && layer.children.length > 0) {
       updates.children = injectTranslatedText(layer.children, pageId, translations, options);
     }
@@ -1419,6 +1497,7 @@ export function extractLayerTranslatableItemsShallow(
   }
 
   extractMediaTranslatableItems(layer, sourceType, sourceId, items);
+  extractAttributeTranslatableItems(layer, sourceType, sourceId, items);
 
   return items;
 }
