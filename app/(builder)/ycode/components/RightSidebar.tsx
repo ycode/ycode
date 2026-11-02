@@ -2353,6 +2353,7 @@ const RightSidebar = React.memo(function RightSidebar({
                             allFields={fields}
                             collections={collections}
                             layer={selectedLayer}
+                            showContentLabel={translatableItemsExcludingCmsText.length > 1}
                           />
                         );
                       })}
