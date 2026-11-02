@@ -948,7 +948,7 @@ export default function LocalizationContent({ children }: LocalizationContentPro
                         const layers = (primaryVariantId && draftVariants?.[primaryVariantId])
                           || component.layers
                           || [];
-                        const translatableItems = extractComponentTranslatableItems(component, layers);
+                        const translatableItems = extractComponentTranslatableItems(component, layers, storeComponents);
                         const filteredItems = filterTranslatableItems(translatableItems);
 
                         if (filteredItems.length === 0) {

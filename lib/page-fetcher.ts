@@ -42,7 +42,7 @@ import { resolveInlineVariables, resolveInlineVariablesFromData } from '@/lib/in
 import { buildPaginationNumbers, getPaginationLayerKind, hasPaginationVariables, paginationTextVariableToTemplate, resolvePaginationTextVariable } from '@/lib/pagination-text-utils';
 import { buildPaginationLinkAttrs, collectPaginationMeta, resolveCurrentPage } from '@/lib/pagination-url-utils';
 import { formatFieldValue, resolveFieldFromSources } from '@/lib/cms-variables-utils';
-import { buildLayerTranslationKey, getTranslationByKey, hasValidTranslationValue, getTranslationValue, injectTranslatedText, applyCmsTranslations, translateComponentOverrides } from '@/lib/localisation-utils';
+import { buildLayerTranslationKey, getTranslationByKey, hasValidTranslationValue, getTranslationValue, injectTranslatedText, applyCmsTranslations, translateInstanceOverrides } from '@/lib/localisation-utils';
 import { formatDateFieldsInItemValues } from '@/lib/date-format-utils';
 import { getSettingByKey } from '@/lib/repositories/settingsRepository';
 import { getAllGlobalVariables } from '@/lib/repositories/globalVariableRepository';
@@ -730,11 +730,15 @@ async function fetchPageByPathInternal(
 
             // Translate component-instance override values first, so the translated
             // values are what `resolveComponents` propagates into the rendered tree.
-            const localizedRawLayers = detectedLocale && translations && Object.keys(translations).length > 0
-              ? translateComponentOverrides(pageLayers?.layers || [], matchingPage.id, translations, { includeIncomplete: !isPublished })
-              : pageLayers?.layers || [];
+            const localized = translateInstanceOverrides(
+              pageLayers?.layers || [],
+              matchingPage.id,
+              components,
+              detectedLocale ? translations : undefined,
+              { includeIncomplete: !isPublished }
+            );
 
-            const layersWithComponents = resolveComponents(localizedRawLayers, components);
+            const layersWithComponents = resolveComponents(localized.layers, localized.components);
 
             // Inject dynamic page collection data into layers (including expanded component layers)
             // This resolves inline variables like "Name → Location" on the page
@@ -856,11 +860,15 @@ async function fetchPageByPathInternal(
 
     // Translate component-instance override values before resolving components,
     // so per-instance translations propagate correctly through the override pipeline.
-    const localizedRawLayers = detectedLocale && translations && Object.keys(translations).length > 0
-      ? translateComponentOverrides(pageLayers?.layers || [], matchingPage.id, translations, { includeIncomplete: !isPublished })
-      : pageLayers?.layers || [];
+    const localized = translateInstanceOverrides(
+      pageLayers?.layers || [],
+      matchingPage.id,
+      components,
+      detectedLocale ? translations : undefined,
+      { includeIncomplete: !isPublished }
+    );
 
-    const layersWithComponents = resolveComponents(localizedRawLayers, components);
+    const layersWithComponents = resolveComponents(localized.layers, localized.components);
 
     let resolvedLayers = layersWithComponents.length > 0
       ? await resolveCollectionLayers(layersWithComponents, isPublished, undefined, paginationContext, translations, undefined, timezone)
@@ -999,12 +1007,16 @@ export async function fetchErrorPage(
     const translationOptions = { includeIncomplete: !isPublished };
 
     // Translate component-instance overrides before resolving components
-    const localizedLayers = pageTranslations
-      ? translateComponentOverrides(pageLayers?.layers || [], errorPage.id, pageTranslations, translationOptions)
-      : pageLayers?.layers || [];
+    const localized = translateInstanceOverrides(
+      pageLayers?.layers || [],
+      errorPage.id,
+      components,
+      pageTranslations,
+      translationOptions
+    );
 
     // First, resolve components so collection layers inside components are available
-    const layersWithComponents = resolveComponents(localizedLayers, components);
+    const layersWithComponents = resolveComponents(localized.layers, localized.components);
 
     // Resolve collection layers server-side (for both draft and published)
     // The isPublished parameter controls which collection items to fetch
@@ -1097,11 +1109,15 @@ export const fetchHomepage = cache(async function fetchHomepage(
 
     // Translate component-instance override values before resolving components
     // so per-instance translations are applied through the override pipeline.
-    const localizedRawLayers = translations && Object.keys(translations).length > 0
-      ? translateComponentOverrides(pageLayers?.layers || [], homepage.id, translations, { includeIncomplete: !isPublished })
-      : pageLayers?.layers || [];
+    const localized = translateInstanceOverrides(
+      pageLayers?.layers || [],
+      homepage.id,
+      components,
+      translations,
+      { includeIncomplete: !isPublished }
+    );
 
-    const layersWithComponents = resolveComponents(localizedRawLayers, components);
+    const layersWithComponents = resolveComponents(localized.layers, localized.components);
 
     // Resolve collection layers server-side (for both draft and published)
     let resolvedLayers = layersWithComponents.length > 0

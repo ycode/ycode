@@ -347,9 +347,14 @@ const Canvas = React.memo(function Canvas({
   // locale is active.
   const layersForSerialization = useMemo(() => {
     if (!currentLocale || currentLocale.is_default || !translations) return layers;
-    const lookupPageId = pageId || (editingComponentId ?? '');
-    if (!lookupPageId) return layers;
-    return translateComponentOverrides(layers, lookupPageId, translations, { includeIncomplete: true });
+    if (editingComponentId) {
+      return translateComponentOverrides(layers, editingComponentId, translations, {
+        includeIncomplete: true,
+        sourceType: 'component',
+      });
+    }
+    if (!pageId) return layers;
+    return translateComponentOverrides(layers, pageId, translations, { includeIncomplete: true });
   }, [layers, currentLocale, translations, pageId, editingComponentId]);
 
   // Resolve component instances in layers

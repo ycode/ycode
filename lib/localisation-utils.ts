@@ -491,9 +491,9 @@ function extractMediaTranslatableItems(
 /**
  * Extract translatable items from a component instance's `componentOverrides`.
  *
- * Per-instance overrides are page-scoped: each instance can be translated
- * independently. Keys mirror what `translateComponentOverrides` consumes at
- * render time:
+ * Overrides are scoped to the page or component whose layer tree holds the
+ * instance, so each instance can be translated independently. Keys mirror what
+ * `translateComponentOverrides` consumes at render time:
  *   - `layer:<instanceId>:override:text:<varId>`
  *   - `layer:<instanceId>:override:rich_text:<varId>`
  *   - `layer:<instanceId>:override:image_src:<varId>`
@@ -501,7 +501,8 @@ function extractMediaTranslatableItems(
  */
 function extractComponentOverrideTranslatableItems(
   layer: Layer,
-  pageId: string,
+  sourceType: 'page' | 'component',
+  sourceId: string,
   componentsById: Map<string, Component> | undefined,
   items: TranslatableItem[]
 ): void {
@@ -541,9 +542,9 @@ function extractComponentOverrideTranslatableItems(
 
       const variableName = getVar(varId)?.name || getLayerName(layer);
       items.push({
-        key: `page:${pageId}:layer:${layer.id}:override:${category}:${varId}`,
-        source_type: 'page',
-        source_id: pageId,
+        key: `${sourceType}:${sourceId}:layer:${layer.id}:override:${category}:${varId}`,
+        source_type: sourceType,
+        source_id: sourceId,
         content_key: `layer:${layer.id}:override:${category}:${varId}`,
         content_type: classification.contentType,
         content_value: classification.value,
@@ -563,9 +564,9 @@ function extractComponentOverrideTranslatableItems(
       const src = imageValue?.src;
       if (src && src.type === 'asset' && src.data?.asset_id) {
         items.push({
-          key: `page:${pageId}:layer:${layer.id}:override:image_src:${varId}`,
-          source_type: 'page',
-          source_id: pageId,
+          key: `${sourceType}:${sourceId}:layer:${layer.id}:override:image_src:${varId}`,
+          source_type: sourceType,
+          source_id: sourceId,
           content_key: `layer:${layer.id}:override:image_src:${varId}`,
           content_type: 'asset_id',
           content_value: src.data.asset_id,
@@ -576,9 +577,9 @@ function extractComponentOverrideTranslatableItems(
       const alt = imageValue?.alt;
       if (alt && alt.type === 'dynamic_text' && typeof alt.data?.content === 'string' && alt.data.content.trim()) {
         items.push({
-          key: `page:${pageId}:layer:${layer.id}:override:image_alt:${varId}`,
-          source_type: 'page',
-          source_id: pageId,
+          key: `${sourceType}:${sourceId}:layer:${layer.id}:override:image_alt:${varId}`,
+          source_type: sourceType,
+          source_id: sourceId,
           content_key: `layer:${layer.id}:override:image_alt:${varId}`,
           content_type: 'text',
           content_value: alt.data.content.trim(),
@@ -590,9 +591,9 @@ function extractComponentOverrideTranslatableItems(
 }
 
 /**
- * Recursively extract all translatable text items from layers.
- * When `componentsById` is provided (page context only), per-instance
- * component overrides are surfaced as page-scoped translatable items.
+ * Recursively extract all translatable text items from layers, including
+ * per-instance component overrides scoped to `sourceType`/`sourceId`.
+ * `componentsById` only enriches override labels.
  */
 function extractLayerTranslatableItems(
   layers: Layer[],
@@ -628,9 +629,10 @@ function extractLayerTranslatableItems(
 
     extractMediaTranslatableItems(layer, sourceType, sourceId, items);
 
-    // Component instance overrides are page-scoped and translated per instance.
-    if (sourceType === 'page' && layer.componentId && layer.componentOverrides) {
-      extractComponentOverrideTranslatableItems(layer, sourceId, componentsById, items);
+    // Component instance overrides are translated per instance, scoped to the
+    // page or component that holds the instance.
+    if (layer.componentId && layer.componentOverrides) {
+      extractComponentOverrideTranslatableItems(layer, sourceType, sourceId, componentsById, items);
     }
 
     if (layer.children && Array.isArray(layer.children) && layer.children.length > 0) {
@@ -821,17 +823,23 @@ export function extractFolderTranslatableItems(
 }
 
 /**
- * Extract all translatable items from a component (layer texts only)
+ * Extract all translatable items from a component: layer texts and overrides
+ * on component instances nested inside it. Pass `components` for rich
+ * "Component › Variable" override labels.
  */
 export function extractComponentTranslatableItems(
   component: { id: string; name: string },
-  layers: Layer[]
+  layers: Layer[],
+  components?: Component[]
 ): TranslatableItem[] {
   const items: TranslatableItem[] = [];
 
-  // Extract layer texts only (components don't have slug or SEO)
+  // Components don't have slug or SEO
   if (layers && Array.isArray(layers) && layers.length > 0) {
-    extractLayerTranslatableItems(layers, 'component', component.id, items);
+    const componentsById = components
+      ? new Map(components.map(c => [c.id, c]))
+      : undefined;
+    extractLayerTranslatableItems(layers, 'component', component.id, items, componentsById);
   }
 
   return items;
@@ -1141,12 +1149,13 @@ export function injectTranslatedText(
 }
 
 /**
- * Pre-resolution pass: translate text/richtext/image values stored in a
- * page-instance layer's `componentOverrides` using page-scope override
- * translations. Must run BEFORE `resolveComponents` so translated overrides
- * propagate through `applyComponentOverrides` normally.
+ * Pre-resolution pass: translate text/richtext/image values stored in an
+ * instance layer's `componentOverrides`, using translations scoped to the page
+ * (default) or component (`sourceType: 'component'`) that holds the layers.
+ * Must run BEFORE `resolveComponents` so translated overrides propagate
+ * through `applyComponentOverrides` normally.
  *
- * Keys (page-scope):
+ * Keys (scoped to `sourceType:sourceId`):
  *   - `layer:<instanceLayerId>:override:text:<varId>`       (string)
  *   - `layer:<instanceLayerId>:override:rich_text:<varId>`  (Tiptap JSON string)
  *   - `layer:<instanceLayerId>:override:image_src:<varId>`  (asset_id)
@@ -1158,15 +1167,16 @@ export function injectTranslatedText(
  */
 export function translateComponentOverrides(
   layers: Layer[],
-  pageId: string,
+  sourceId: string,
   translations: Record<string, Translation> | null | undefined,
-  options?: { includeIncomplete?: boolean }
+  options?: { includeIncomplete?: boolean; sourceType?: 'page' | 'component' }
 ): Layer[] {
   if (!translations || !layers || layers.length === 0) return layers;
   const valueOptions = options?.includeIncomplete ? { includeIncomplete: true } : undefined;
+  const sourceType = options?.sourceType ?? 'page';
 
   const lookup = (key: string): string | undefined =>
-    getTranslationValue(translations[`page:${pageId}:${key}`], valueOptions);
+    getTranslationValue(translations[`${sourceType}:${sourceId}:${key}`], valueOptions);
 
   const walk = (list: Layer[]): Layer[] =>
     list.map(layer => {
@@ -1247,6 +1257,54 @@ export function translateComponentOverrides(
     });
 
   return walk(layers);
+}
+
+/**
+ * Translate overrides on component instances nested inside each component's
+ * own layer tree (all variants), using component-scope translations. Run on
+ * the components list before `resolveComponents`.
+ */
+export function translateNestedComponentOverrides(
+  components: Component[],
+  translations: Record<string, Translation> | null | undefined,
+  options?: { includeIncomplete?: boolean }
+): Component[] {
+  if (!translations || Object.keys(translations).length === 0) return components;
+
+  return components.map(component => {
+    const translate = (layers: Layer[]) => translateComponentOverrides(
+      layers, component.id, translations, { ...options, sourceType: 'component' }
+    );
+    const layers = translate(component.layers);
+    let variantsChanged = false;
+    const variants = component.variants?.map(variant => {
+      const variantLayers = translate(variant.layers);
+      if (variantLayers === variant.layers) return variant;
+      variantsChanged = true;
+      return { ...variant, layers: variantLayers };
+    });
+
+    if (layers === component.layers && !variantsChanged) return component;
+    return { ...component, layers, ...(variantsChanged ? { variants } : {}) };
+  });
+}
+
+/**
+ * Translate every instance override before `resolveComponents`: overrides on
+ * the page's own instances and on instances nested inside components.
+ */
+export function translateInstanceOverrides(
+  layers: Layer[],
+  pageId: string,
+  components: Component[],
+  translations: Record<string, Translation> | null | undefined,
+  options?: { includeIncomplete?: boolean }
+): { layers: Layer[]; components: Component[] } {
+  if (!translations || Object.keys(translations).length === 0) return { layers, components };
+  return {
+    layers: translateComponentOverrides(layers, pageId, translations, options),
+    components: translateNestedComponentOverrides(components, translations, options),
+  };
 }
 
 function safeParseJson(value: string): unknown {

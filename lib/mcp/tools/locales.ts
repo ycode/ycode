@@ -358,7 +358,8 @@ export function registerLocaleTools(server: McpServer) {
         }
         const variants = component.variants as ComponentVariant[] | undefined;
         const layers = (variants?.[0]?.layers || (component.layers as Layer[]) || []);
-        items = extractComponentTranslatableItems({ id: component.id, name: component.name }, layers);
+        const components = await getAllComponents(false).catch(() => []);
+        items = extractComponentTranslatableItems({ id: component.id, name: component.name }, layers, components);
         if (locale_id) {
           existingByKey = buildExistingMap(await getTranslationsBySource('component', source_id, false, locale_id));
         }
