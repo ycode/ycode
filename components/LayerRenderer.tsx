@@ -19,7 +19,7 @@ import { useCanvasSlider } from '@/hooks/use-canvas-slider';
 import { resolveFieldFromSources } from '@/lib/cms-variables-utils';
 import { getDynamicTextContent, getImageUrlFromVariable, getVideoUrlFromVariable, getIframeUrlFromVariable, isFieldVariable, isAssetVariable, isStaticTextVariable, isDynamicTextVariable, getAssetId, getStaticTextContent, createAssetVariable, createDynamicTextVariable, resolveDesignStyles, getEffectiveHidden, getEffectiveId } from '@/lib/variable-utils';
 import { applyGridSpanBindings } from '@/lib/grid-span-binding-utils';
-import { getTranslatedAssetId, getTranslatedText, applyCmsTranslations, injectTranslatedText } from '@/lib/localisation-utils';
+import { getTranslatedAssetId, getTranslatedText, applyCmsTranslations, injectTranslatedText, translateComponentOverrides } from '@/lib/localisation-utils';
 import { isValidLinkSettings } from '@/lib/link-utils';
 import { DEFAULT_ASSETS, ASSET_CATEGORIES, isAssetOfType } from '@/lib/asset-utils';
 import { parseMultiAssetFieldValue, buildAssetVirtualValues } from '@/lib/multi-asset-utils';
@@ -1410,10 +1410,15 @@ const LayerItemImpl: React.FC<{
     // first variant when the requested one was deleted).
     const variantLayers = getComponentVariantLayers(component, effectiveVariantId);
     if (!variantLayers.length) return null;
-    const transformed = transformLayerIdsForInstance(variantLayers, layer.id);
     if (!currentLocale || currentLocale.is_default || !translations) {
-      return transformed;
+      return transformLayerIdsForInstance(variantLayers, layer.id);
     }
+    // Override translations are keyed by the original nested-instance ids.
+    const localizedLayers = translateComponentOverrides(variantLayers, component.id, translations, {
+      includeIncomplete: true,
+      sourceType: 'component',
+    });
+    const transformed = transformLayerIdsForInstance(localizedLayers, layer.id);
     return injectTranslatedText(transformed, pageId || component.id, translations, {
       includeIncomplete: true,
       defaultMasterComponentId: component.id,
