@@ -130,6 +130,7 @@ export default function SidebarTranslationRow({
   // already make it obvious what's being translated.
   const propertyLabel = (() => {
     const suffix = item.content_key.split(':').pop();
+    if (item.content_key.includes(':attribute:')) return suffix || null;
     switch (suffix) {
       case 'image_alt': return 'Image ALT';
       case 'image_src': return 'Image';
