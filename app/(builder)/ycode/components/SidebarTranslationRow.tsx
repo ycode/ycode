@@ -79,6 +79,8 @@ interface SidebarTranslationRowProps {
   collections?: Collection[];
   /** The layer being translated, for rich-text editor context. */
   layer?: Layer | null;
+  /** Label the text content row, for layers with several translatable properties. */
+  showContentLabel?: boolean;
 }
 
 /**
@@ -105,6 +107,7 @@ export default function SidebarTranslationRow({
   allFields,
   collections,
   layer,
+  showContentLabel = false,
 }: SidebarTranslationRowProps) {
   const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false);
 
@@ -126,11 +129,13 @@ export default function SidebarTranslationRow({
 
   // Sub-label shown beneath each language name when a layer has more than
   // one translatable property (e.g. an image has both source + alt text).
-  // Plain text content stays unlabelled — the language name plus the textarea
-  // already make it obvious what's being translated.
+  // Text content is only labelled when other rows sit next to it; on its own,
+  // the language name plus the textarea already make it obvious.
   const propertyLabel = (() => {
     const suffix = item.content_key.split(':').pop();
+    if (item.content_key.includes(':attribute:')) return suffix || null;
     switch (suffix) {
+      case 'text': return showContentLabel ? 'Content' : null;
       case 'image_alt': return 'Image ALT';
       case 'image_src': return 'Image';
       case 'video_src': return 'Video';

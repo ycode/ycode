@@ -89,7 +89,7 @@ function linkifyText(text: string): React.ReactNode[] {
  * docs/billing URLs, so bare links render clickable. */
 function ErrorNotice({ message }: { message: string }) {
   return (
-    <div className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2 break-words">
+    <div className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2 wrap-anywhere">
       {linkifyText(message)}
     </div>
   );
@@ -283,7 +283,7 @@ function CollapsibleUserMessage({ children }: { children: ReactNode }) {
       <div
         ref={contentRef}
         className={cn(
-          'px-3 py-2 text-xs whitespace-pre-wrap break-words',
+          'px-3 py-2 text-xs whitespace-pre-wrap wrap-anywhere',
           isClamped && !isExpanded && 'overflow-hidden',
           isClamped && isExpanded && 'overflow-y-auto no-scrollbar',
         )}
@@ -654,7 +654,7 @@ function MarkdownText({ text }: { text: string }) {
   const html = useMemo(() => renderMarkdown(text), [text]);
   return (
     <div
-      className="text-xs leading-relaxed break-words [&_p]:my-1.5 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1.5 [&_ul]:ml-4 [&_ul]:list-disc [&_ol]:my-1.5 [&_ol]:ml-4 [&_ol]:list-decimal [&_li]:my-0.5 [&_h1]:mt-2 [&_h1]:mb-1 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:mt-2 [&_h2]:mb-1 [&_h2]:text-xs [&_h2]:font-semibold [&_h3]:font-semibold [&_a]:underline [&_a]:underline-offset-2 [&_strong]:font-semibold [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[11px] [&_pre]:my-1.5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_blockquote]:border-l-2 [&_blockquote]:pl-2 [&_blockquote]:text-muted-foreground"
+      className="min-w-0 text-xs leading-relaxed wrap-anywhere [&_p]:my-1.5 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1.5 [&_ul]:ml-4 [&_ul]:list-disc [&_ol]:my-1.5 [&_ol]:ml-4 [&_ol]:list-decimal [&_li]:my-0.5 [&_h1]:mt-2 [&_h1]:mb-1 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:mt-2 [&_h2]:mb-1 [&_h2]:text-xs [&_h2]:font-semibold [&_h3]:font-semibold [&_a]:underline [&_a]:underline-offset-2 [&_strong]:font-semibold [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[11px] [&_pre]:my-1.5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_blockquote]:border-l-2 [&_blockquote]:pl-2 [&_blockquote]:text-muted-foreground"
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
@@ -895,7 +895,7 @@ const MessageBubble = memo(function MessageBubble({
 
   if (message.role === 'user') {
     return (
-      <div className="self-end max-w-[100%] flex flex-col items-end gap-1.5">
+      <div className="self-end max-w-full min-w-0 flex flex-col items-end gap-1.5">
         {message.images && message.images.length > 0 && (
           <div className="flex flex-wrap justify-end gap-1.5">
             {message.images.map((image) => (
@@ -1054,7 +1054,7 @@ function ThinkingTrail({ parts, streaming }: { parts: ChatMessagePart[]; streami
         ) : (
           <div key={index} className="opacity-60">
             {streaming ? (
-              <div className="text-xs leading-relaxed break-words whitespace-pre-wrap">{stripMarkdownSyntax(group.text)}</div>
+              <div className="text-xs leading-relaxed wrap-anywhere whitespace-pre-wrap">{stripMarkdownSyntax(group.text)}</div>
             ) : (
               <MarkdownText text={group.text} />
             )}
