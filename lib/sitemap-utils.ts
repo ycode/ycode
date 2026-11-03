@@ -272,14 +272,4 @@ export function generateSitemapXml(urls: SitemapUrl[]): string {
   return xml;
 }
 
-/**
- * Default sitemap settings (Ycode-generated sitemap enabled for new apps)
- */
-export function getDefaultSitemapSettings(): SitemapSettings {
-  return {
-    mode: 'auto',
-    includeImages: false,
-    defaultChangeFrequency: 'weekly',
-    customXml: '',
-  };
-}
+export { getDefaultSitemapSettings, normalizeSitemapSettings } from './sitemap-settings';
