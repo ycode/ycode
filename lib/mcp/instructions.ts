@@ -294,7 +294,8 @@ the component tools.
 ### CMS / Collections
 
 Collections are like database tables (create_collection → add_collection_field →
-create_collection_item). A \`collection\` element on a page is the REPEATED ITEM: the layer
+create_collection_item). New collections already have the built-in Name and Slug fields (plus
+ID, Status, Created/Updated Date); never add duplicates of them. A \`collection\` element on a page is the REPEATED ITEM: the layer
 itself (with its classes) is cloned once per item, together with its children. So the
 collection layer is the card, not the list container — put the list layout (display grid,
 gridTemplateColumns, gap, dividers) on its PARENT div and only card styling on the
