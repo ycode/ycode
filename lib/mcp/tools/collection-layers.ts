@@ -14,11 +14,10 @@ import { canConvertToCollection, findParentCollectionLayer } from '@/lib/layer-u
 import {
   BINDABLE_TEXT_LAYER_NAMES,
   bindLayerToField,
-  buildFieldData,
-  dynamicVariableNode,
-  paragraphDoc,
+  buildDynamicTextDoc,
   resolveBindingContext,
 } from '@/lib/mcp/field-binding';
+import { bindingSourceEnum, dynamicTextSegmentSchema } from './shared-schemas';
 import {
   fieldConditionSchema,
   itemIdConditionSchema,
@@ -344,16 +343,10 @@ or on a dynamic CMS page (source "page").`,
     {
       page_id: z.string().describe('The page ID'),
       layer_id: z.string().describe('The text / heading / richText layer'),
-      source: z.enum(['collection', 'page']).default('collection')
+      source: bindingSourceEnum.default('collection')
         .describe('"collection" = nearest ancestor Collection List (default). "page" = the dynamic page\'s collection item.'),
-      segments: z.array(z.discriminatedUnion('type', [
-        z.object({ type: z.literal('text'), text: z.string().describe('Literal text.') }),
-        z.object({
-          type: z.literal('field'),
-          field_id: z.string().describe('Collection field ID to insert.'),
-          format: z.string().optional().describe('Optional value format (e.g. a date format).'),
-        }),
-      ])).min(1).describe('Ordered segments interleaving literal text and field references.'),
+      segments: z.array(dynamicTextSegmentSchema).min(1)
+        .describe('Ordered segments interleaving literal text and field references.'),
     },
     async ({ page_id, layer_id, source, segments }) => {
       const pageLayers = await getCachedDraft(page_id);
@@ -378,28 +371,15 @@ or on a dynamic CMS page (source "page").`,
       const fields = await getFieldsByCollectionId(collectionId);
       const fieldsById = new Map<string, CollectionField>(fields.map((f) => [f.id, f]));
 
-      const content: Record<string, unknown>[] = [];
-      let fieldCount = 0;
-      for (const seg of segments) {
-        if (seg.type === 'text') {
-          if (seg.text) content.push({ type: 'text', text: seg.text });
-          continue;
-        }
-        const field = fieldsById.get(seg.field_id);
-        if (!field) {
-          return { content: [{ type: 'text' as const, text: `Error: Field "${seg.field_id}" not found in the ${source === 'page' ? 'page' : 'list'} collection.` }], isError: true };
-        }
-        content.push(dynamicVariableNode(buildFieldData(field, source, collectionLayerId, seg.format), field.name));
-        fieldCount += 1;
+      const built = buildDynamicTextDoc(segments, fieldsById, source, collectionLayerId);
+      if ('error' in built) {
+        return { content: [{ type: 'text' as const, text: `Error: ${built.error}` }], isError: true };
       }
-
-      if (fieldCount === 0) {
-        return { content: [{ type: 'text' as const, text: 'Error: Provide at least one "field" segment (use plain static text for non-dynamic content).' }], isError: true };
-      }
+      const { fieldCount } = built;
 
       const nextVariables: Layer['variables'] = {
         ...layer.variables,
-        text: { type: 'dynamic_rich_text', data: { content: paragraphDoc(content) } },
+        text: { type: 'dynamic_rich_text', data: { content: built.doc } },
       };
       const updated = updateLayerById(layers, layer_id, (l) => ({ ...l, variables: nextVariables }));
       await saveCachedLayers(page_id, updated);
