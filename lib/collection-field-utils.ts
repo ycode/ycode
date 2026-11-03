@@ -544,6 +544,39 @@ export function compareDateFilter(
 }
 
 // =============================================================================
+// Built-in Fields
+// =============================================================================
+
+/** A system field every collection gets; its `key` locks it from editing and deletion. */
+export interface BuiltInFieldDefinition {
+  name: string;
+  key: string;
+  type: CollectionFieldType;
+  fillable: boolean;
+  hidden: boolean;
+  is_computed?: boolean;
+}
+
+/** Built-in fields placed before custom fields. */
+export const BUILT_IN_FIELDS_START: BuiltInFieldDefinition[] = [
+  { name: 'ID', key: 'id', type: 'number', fillable: false, hidden: false },
+  { name: 'Status', key: 'status', type: 'status', fillable: false, hidden: false, is_computed: true },
+  { name: 'Name', key: 'name', type: 'text', fillable: true, hidden: false },
+  { name: 'Slug', key: 'slug', type: 'text', fillable: true, hidden: false },
+];
+
+/** Built-in fields kept after custom fields. */
+export const BUILT_IN_FIELDS_END: BuiltInFieldDefinition[] = [
+  { name: 'Created Date', key: 'created_at', type: 'date', fillable: false, hidden: false },
+  { name: 'Updated Date', key: 'updated_at', type: 'date', fillable: false, hidden: false },
+];
+
+/** Built-in fields of a new collection, ordered sequentially. */
+export function getNewCollectionBuiltInFields(): Array<BuiltInFieldDefinition & { order: number }> {
+  return [...BUILT_IN_FIELDS_START, ...BUILT_IN_FIELDS_END].map((field, order) => ({ ...field, order }));
+}
+
+// =============================================================================
 // Field Lookup Utilities
 // =============================================================================
 

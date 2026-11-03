@@ -190,6 +190,23 @@ export async function getFieldById(id: string, isPublished: boolean = false): Pr
   return data;
 }
 
+/** Build an insertable field row with defaults applied. */
+function buildFieldRow(fieldData: CreateCollectionFieldData) {
+  const now = new Date().toISOString();
+  return {
+    id: randomUUID(),
+    ...fieldData,
+    fillable: fieldData.fillable ?? true,
+    key: fieldData.key ?? null,
+    hidden: fieldData.hidden ?? false,
+    is_computed: fieldData.is_computed ?? false,
+    data: fieldData.data ?? {},
+    is_published: fieldData.is_published ?? false,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
 /**
  * Create a new field
  */
@@ -200,23 +217,9 @@ export async function createField(fieldData: CreateCollectionFieldData): Promise
     throw new Error('Supabase client not configured');
   }
 
-  const id = randomUUID();
-  const isPublished = fieldData.is_published ?? false;
-
   const { data, error } = await client
     .from('collection_fields')
-    .insert({
-      id,
-      ...fieldData,
-      fillable: fieldData.fillable ?? true,
-      key: fieldData.key ?? null,
-      hidden: fieldData.hidden ?? false,
-      is_computed: fieldData.is_computed ?? false,
-      data: fieldData.data ?? {},
-      is_published: isPublished,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
+    .insert(buildFieldRow(fieldData))
     .select()
     .single();
 
@@ -225,6 +228,33 @@ export async function createField(fieldData: CreateCollectionFieldData): Promise
   }
 
   return data;
+}
+
+/**
+ * Create several fields in one insert, returned in `order`.
+ */
+export async function createFields(
+  fieldsData: CreateCollectionFieldData[],
+  tenantId?: string
+): Promise<CollectionField[]> {
+  if (fieldsData.length === 0) return [];
+
+  const client = await getSupabaseAdmin(tenantId);
+
+  if (!client) {
+    throw new Error('Supabase client not configured');
+  }
+
+  const { data, error } = await client
+    .from('collection_fields')
+    .insert(fieldsData.map(buildFieldRow))
+    .select();
+
+  if (error) {
+    throw new Error(`Failed to create collection fields: ${error.message}`);
+  }
+
+  return (data || []).sort((a, b) => a.order - b.order);
 }
 
 /**
