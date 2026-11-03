@@ -48,7 +48,16 @@ import {
   broadcastComponentDeleted,
   broadcastComponentLayersUpdated,
 } from '@/lib/mcp/broadcast';
-import { designSchema, richTextBlockSchema, templateEnum, updateLinkOp, updateSettingsOp } from './shared-schemas';
+import { buildOverrideValue, createOverrideContext } from '@/lib/mcp/instance-overrides';
+import {
+  bindingSourceEnum,
+  designSchema,
+  dynamicTextSegmentSchema,
+  richTextBlockSchema,
+  templateEnum,
+  updateLinkOp,
+  updateSettingsOp,
+} from './shared-schemas';
 
 const variableTypeEnum = z.enum(['text', 'rich_text', 'image', 'link', 'audio', 'video', 'icon', 'variant', 'visibility', 'id'])
   .describe('Variable type. "variant" lets instances pick which variant of a nested component is rendered. "visibility" is a boolean ({ visible: true|false }) that shows/hides the linked layer per instance. "id" is a string ({ id: "my-element" }) that sets the linked layer\'s HTML id attribute per instance (e.g. per-page tracking ids).');
@@ -402,7 +411,18 @@ This is how you make several instances of the same component show DIFFERENT cont
 component — structure stays shared and read-only. Only variables defined on the component
 can be overridden; call get_component on the instance's componentId to see the variable ids
 and their types. Each override targets one variable by id; the value shape is chosen from the
-variable's declared type, so you only pass the relevant field.`,
+variable's declared type, so you only pass the relevant field.
+
+CMS BINDINGS (instance inside a Collection List, or on a dynamic CMS page) — bind per instance
+instead of in the component defaults, so one component works for any collection:
+- text / rich_text: segments interleaving literal text and { type: "field", field_id }.
+- image / video / audio / link: field_id binds the variable to a field of that type (link: a
+  link, email or phone field).
+- link to the item's dynamic page: link_page_id = the dynamic page, collection_item_id
+  "current-collection" (default inside a list of that collection), "current-page" (default on
+  that dynamic page), "next-item", "previous-item" or an item id.
+Fields resolve from source: "collection" (nearest ancestor Collection List, the default when
+there is one) or "page" (the dynamic page's item).`,
     {
       page_id: z.string().describe('The page ID the instance lives on'),
       layer_id: z.string().describe('The component-instance layer ID (has componentInstance: true in get_layers)'),
@@ -416,10 +436,21 @@ variable's declared type, so you only pass the relevant field.`,
         text: z.string().optional().describe('For text/rich_text variables: plain text content'),
         rich_content: z.array(richTextBlockSchema).optional()
           .describe('For text/rich_text variables: structured content blocks (overrides `text`)'),
+        segments: z.array(dynamicTextSegmentSchema).optional()
+          .describe('For text/rich_text variables: literal text interleaved with CMS field references (overrides `text` and `rich_content`)'),
+        field_id: z.string().optional()
+          .describe('For image/video/audio/link variables: bind to this CMS field (overrides asset_id / url / link_page_id)'),
+        source: bindingSourceEnum.optional()
+          .describe('Where segments / field_id resolve from: "collection" (nearest ancestor Collection List) or "page" (dynamic page item). Defaults to "collection" inside a Collection List, else "page".'),
         asset_id: z.string().optional().describe('For image/icon/audio/video variables: asset ID to display'),
         alt: z.string().optional().describe('For image variables: alt text'),
         url: z.string().optional().describe('For link variables: external URL'),
         link_page_id: z.string().optional().describe('For link variables: link to this page by ID (alternative to url)'),
+        collection_item_id: z.string().optional()
+          .describe('For link variables with a dynamic link_page_id: "current-collection", "current-page", "next-item", "previous-item", or an item id. Defaults to "current-collection" inside a list of that collection and "current-page" on its dynamic page.'),
+        anchor_layer_id: z.string().optional()
+          .describe('For link variables: section to scroll to (layer ID or HTML id). Without url / link_page_id it links within this page.'),
+        target: z.enum(['_blank', '_self', '_parent', '_top']).optional().describe('For link variables: link target'),
         variant_id: z.string().optional().describe('For variant variables: the nested component variant ID to render'),
         visible: z.boolean().optional().describe('For visibility variables: whether the linked layer is shown on this instance'),
         element_id: z.string().optional().describe('For id variables: the HTML id attribute the linked layer gets on this instance'),
@@ -466,6 +497,7 @@ variable's declared type, so you only pass the relevant field.`,
       };
 
       const results: Array<{ status: string; detail: string }> = [];
+      const overrideContext = createOverrideContext(layers, page_id, layer_id);
 
       for (const entry of overrides ?? []) {
         const variable = variablesById.get(entry.variable_id);
@@ -486,12 +518,12 @@ variable's declared type, so you only pass the relevant field.`,
           continue;
         }
 
-        const value = buildOverrideValue(category, entry);
-        if (!value) {
-          results.push({ status: 'error', detail: `No usable value provided for "${variable.name}" (${category})` });
+        const built = await buildOverrideValue(category, entry, overrideContext);
+        if ('error' in built) {
+          results.push({ status: 'error', detail: `"${variable.name}": ${built.error}` });
           continue;
         }
-        bucket[entry.variable_id] = value;
+        bucket[entry.variable_id] = built.value;
         results.push({ status: 'ok', detail: `Overrode "${variable.name}" (${category})` });
       }
 
@@ -1471,75 +1503,6 @@ function cleanInstanceOverridesInLayers(
 
     return next;
   });
-}
-
-/** Fields the agent can pass to describe a single instance override. */
-interface OverrideEntryInput {
-  text?: string;
-  rich_content?: RichTextBlock[];
-  asset_id?: string;
-  alt?: string;
-  url?: string;
-  link_page_id?: string;
-  variant_id?: string;
-  visible?: boolean;
-  element_id?: string;
-}
-
-/**
- * Build a typed ComponentVariableValue for a per-instance override from the
- * agent's friendly input, choosing the shape from the variable's declared type.
- * Returns null when the entry carries no usable value for that type.
- */
-function buildOverrideValue(category: string, entry: OverrideEntryInput): ComponentVariableValue | null {
-  switch (category) {
-    case 'text':
-    case 'rich_text':
-      if (entry.rich_content && entry.rich_content.length > 0) {
-        return createTextComponentVariableValue(buildTiptapDoc(entry.rich_content));
-      }
-      if (entry.text !== undefined) {
-        return createTextComponentVariableValue(getTiptapTextContent(entry.text));
-      }
-      return null;
-
-    case 'image':
-      if (!entry.asset_id) return null;
-      return {
-        src: { type: 'asset', data: { asset_id: entry.asset_id } },
-        ...(entry.alt !== undefined ? { alt: { type: 'dynamic_text', data: { content: entry.alt } } } : {}),
-      } as ComponentVariableValue;
-
-    case 'icon':
-    case 'audio':
-    case 'video':
-      if (!entry.asset_id) return null;
-      return { src: { type: 'asset', data: { asset_id: entry.asset_id } } } as ComponentVariableValue;
-
-    case 'link':
-      if (entry.url !== undefined) {
-        return { type: 'url', url: { type: 'dynamic_text', data: { content: entry.url } } } as ComponentVariableValue;
-      }
-      if (entry.link_page_id) {
-        return { type: 'page', page: { id: entry.link_page_id } } as ComponentVariableValue;
-      }
-      return null;
-
-    case 'variant':
-      if (!entry.variant_id) return null;
-      return { variant_id: entry.variant_id } as ComponentVariableValue;
-
-    case 'visibility':
-      if (entry.visible === undefined) return null;
-      return { visible: entry.visible };
-
-    case 'id':
-      if (entry.element_id === undefined) return null;
-      return { id: sanitizeHtmlId(entry.element_id) };
-
-    default:
-      return null;
-  }
 }
 
 function countLayers(layers: Layer[]): number {
