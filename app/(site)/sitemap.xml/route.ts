@@ -15,11 +15,8 @@ import { getSlugTranslationsByLocale } from '@/lib/repositories/translationRepos
 import { getSettingsByKeys } from '@/lib/repositories/settingsRepository';
 import { getItemsByCollectionId } from '@/lib/repositories/collectionItemRepository';
 import { getValuesByItemIds } from '@/lib/repositories/collectionItemValueRepository';
-import {
-  generateSitemapUrls,
-  generateSitemapXml,
-  getDefaultSitemapSettings,
-} from '@/lib/sitemap-utils';
+import { normalizeSitemapSettings } from '@/lib/sitemap-settings';
+import { generateSitemapUrls, generateSitemapXml } from '@/lib/sitemap-utils';
 import { getRequestOrigin, getSiteBaseUrl } from '@/lib/url-utils';
 import type { SitemapSettings, Translation, CollectionItem } from '@/types';
 
@@ -41,7 +38,7 @@ export async function GET() {
     }
 
     const allSettings = await getSettingsByKeys(['sitemap', 'global_canonical_url']);
-    const settings: SitemapSettings = allSettings.sitemap || getDefaultSitemapSettings();
+    const settings: SitemapSettings = normalizeSitemapSettings(allSettings.sitemap);
     const globalCanonicalUrl: string | null = allSettings.global_canonical_url || null;
 
     // If sitemap is disabled, return 404

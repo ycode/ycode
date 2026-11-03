@@ -28,7 +28,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useAssetsStore } from '@/stores/useAssetsStore';
 import type { SitemapSettings, SitemapMode, SitemapChangeFrequency, Asset } from '@/types';
-import { getDefaultSitemapSettings } from '@/lib/sitemap-utils';
+import { normalizeSitemapSettings } from '@/lib/sitemap-settings';
 import { getTimezoneOptions } from '@/lib/setting-utils';
 import { getDetectedTimezone, isCloudVersion } from '@/lib/utils';
 import { Icon } from '@/components/ui/icon';
@@ -51,9 +51,8 @@ export default function GeneralSettingsPage() {
   const { getSettingByKey, saveSettings } = useSettingsStore();
 
   // Initialize sitemap settings from store
-  const storedSitemapSettings = getSettingByKey('sitemap') as SitemapSettings | null;
   const [sitemapSettings, setSitemapSettings] = useState<SitemapSettings>(
-    storedSitemapSettings || getDefaultSitemapSettings()
+    () => normalizeSitemapSettings(getSettingByKey('sitemap'))
   );
   const [isSaving, setIsSaving] = useState(false);
 
