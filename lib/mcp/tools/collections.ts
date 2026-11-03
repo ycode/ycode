@@ -110,7 +110,6 @@ FIELD TYPES:
       collection_id: z.string().describe('The collection ID'),
       name: z.string().describe('Field display name'),
       type: fieldTypeEnum,
-      key: z.string().optional().describe('Unique field key (auto-generated from name if omitted)'),
       reference_collection_id: z.string().optional().describe('For reference / multi_reference fields: the target collection ID'),
       default: z.string().optional().describe('Default value applied to new items'),
       fillable: z.boolean().optional().describe('Whether this field can be set via the API / form submissions. Defaults true.'),
