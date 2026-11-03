@@ -35,6 +35,22 @@ export const richTextBlockSchema = z.object({
   component_id: z.string().optional().describe('For component: ID of the component to embed'),
 });
 
+/** Where a CMS field binding reads its item from. */
+export const bindingSourceEnum = z.enum(['collection', 'page']);
+
+/**
+ * One segment of dynamic text: a literal or a CMS field reference. Shared by
+ * set_dynamic_text and component instance text overrides.
+ */
+export const dynamicTextSegmentSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string().describe('Literal text.') }),
+  z.object({
+    type: z.literal('field'),
+    field_id: z.string().describe('Collection field ID to insert.'),
+    format: z.string().optional().describe('Optional value format (e.g. a date format).'),
+  }),
+]);
+
 // Accept a bare integer column/row count (e.g. "4") and normalize it to the
 // canonical `repeat(N, 1fr)` form used by the visual editor's LayoutControls.
 // Without this, `grid-cols-[4]` is emitted, which Tailwind treats as invalid CSS.

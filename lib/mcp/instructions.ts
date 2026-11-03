@@ -294,7 +294,8 @@ the component tools.
 ### CMS / Collections
 
 Collections are like database tables (create_collection → add_collection_field →
-create_collection_item). A \`collection\` element on a page is the REPEATED ITEM: the layer
+create_collection_item). New collections already have the built-in Name and Slug fields (plus
+ID, Status, Created/Updated Date); never add duplicates of them. A \`collection\` element on a page is the REPEATED ITEM: the layer
 itself (with its classes) is cloned once per item, together with its children. So the
 collection layer is the card, not the list container — put the list layout (display grid,
 gridTemplateColumns, gap, dividers) on its PARENT div and only card styling on the
@@ -722,6 +723,11 @@ repeated card; its parent div is the list container that holds the grid/gap):
    page_id_target = the dynamic page, and collection_item_id "current-collection" (filled in
    for you when the layer sits inside a list of that collection). A dynamic-page link with
    no item renders the literal "/blog/{slug}".
+5. **Component instances in a list** (e.g. a reusable Card): an instance's layers are
+   read-only, so bind its VARIABLES with set_component_instance — text \`segments\` with field
+   references, \`field_id\` for image/video/audio/link variables, and \`link_page_id\` (+
+   \`collection_item_id\`) for the item's page. Keep the component defaults static so the same
+   component works for any collection.
 
 Show/hide ANY layer conditionally (sale badges, empty states) with set_layer_visibility —
 same condition model as set_collection_filters.

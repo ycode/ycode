@@ -54,6 +54,41 @@ export function paragraphDoc(content: Record<string, unknown>[]) {
   return { type: 'doc', content: [{ type: 'paragraph', content }] };
 }
 
+/** A literal or a CMS field reference inside dynamic text. */
+export type DynamicTextSegment =
+  | { type: 'text'; text: string }
+  | { type: 'field'; field_id: string; format?: string };
+
+/**
+ * Build a single-paragraph Tiptap doc interleaving literal text and bound
+ * fields. Errors when a field is missing from `fieldsById` or no segment is a field.
+ */
+export function buildDynamicTextDoc(
+  segments: DynamicTextSegment[],
+  fieldsById: Map<string, CollectionField>,
+  source: BindingSource,
+  collectionLayerId: string | undefined,
+): { doc: ReturnType<typeof paragraphDoc>; fieldCount: number } | { error: string } {
+  const content: Record<string, unknown>[] = [];
+  let fieldCount = 0;
+  for (const seg of segments) {
+    if (seg.type === 'text') {
+      if (seg.text) content.push({ type: 'text', text: seg.text });
+      continue;
+    }
+    const field = fieldsById.get(seg.field_id);
+    if (!field) {
+      return { error: `Field "${seg.field_id}" not found in the ${source === 'page' ? 'page' : 'list'} collection.` };
+    }
+    content.push(dynamicVariableNode(buildFieldData(field, source, collectionLayerId, seg.format), field.name));
+    fieldCount += 1;
+  }
+  if (fieldCount === 0) {
+    return { error: 'Provide at least one "field" segment (use plain static text for non-dynamic content).' };
+  }
+  return { doc: paragraphDoc(content), fieldCount };
+}
+
 /** Build a Tiptap rich-text doc that renders optional prefix/suffix around a bound field. */
 export function buildBoundTextDoc(fieldData: FieldData, label: string, prefix?: string, suffix?: string) {
   const content: Record<string, unknown>[] = [];

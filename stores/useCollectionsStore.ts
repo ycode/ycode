@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { collectionsApi } from '@/lib/api';
 import { sortCollectionsByOrder, getSortParams, hasCollectionValueChanges } from '@/lib/collection-utils';
-import { MULTI_ASSET_COLLECTION_ID, findStatusFieldId, buildStatusValue, getStatusFlagsFromAction } from '@/lib/collection-field-utils';
+import { MULTI_ASSET_COLLECTION_ID, findStatusFieldId, buildStatusValue, getNewCollectionBuiltInFields, getStatusFlagsFromAction } from '@/lib/collection-field-utils';
 import type { StatusAction } from '@/lib/collection-field-utils';
 import { useAssetsStore } from '@/stores/useAssetsStore';
 import { usePagesStore } from '@/stores/usePagesStore';
@@ -237,57 +237,7 @@ export const useCollectionsStore = create<CollectionsStore>((set, get) => ({
 
       // Automatically create built-in fields
       try {
-        const builtInFields = [
-          {
-            name: 'ID',
-            key: 'id',
-            type: 'number' as const,
-            order: 0,
-            fillable: false,
-            hidden: false,
-          },
-          {
-            name: 'Status',
-            key: 'status',
-            type: 'status' as const,
-            order: 1,
-            fillable: false,
-            is_computed: true,
-            hidden: false,
-          },
-          {
-            name: 'Name',
-            key: 'name',
-            type: 'text' as const,
-            order: 2,
-            fillable: true,
-            hidden: false,
-          },
-          {
-            name: 'Slug',
-            key: 'slug',
-            type: 'text' as const,
-            order: 3,
-            fillable: true,
-            hidden: false,
-          },
-          {
-            name: 'Created Date',
-            key: 'created_at',
-            type: 'date' as const,
-            order: 4,
-            fillable: false,
-            hidden: false,
-          },
-          {
-            name: 'Updated Date',
-            key: 'updated_at',
-            type: 'date' as const,
-            order: 5,
-            fillable: false,
-            hidden: false,
-          },
-        ];
+        const builtInFields = getNewCollectionBuiltInFields();
 
         // Create all built-in fields in parallel
         const fieldResponses = await Promise.all(

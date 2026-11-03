@@ -3,11 +3,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { CollectionFieldData, CollectionFieldType, CollectionSorting } from '@/types';
 import { getAllCollections, createCollection, updateCollection, deleteCollection } from '@/lib/repositories/collectionRepository';
-import { diffFieldOptions } from '@/lib/collection-field-utils';
+import { diffFieldOptions, getNewCollectionBuiltInFields } from '@/lib/collection-field-utils';
 import {
   getFieldById,
   getFieldsByCollectionId,
   createField,
+  createFields,
   updateField,
   deleteField,
   reorderFields,
@@ -83,14 +84,26 @@ export function registerCollectionTools(server: McpServer) {
 
   server.tool(
     'create_collection',
-    'Create a new CMS collection. After creating, use add_collection_field to define its schema.',
+    `Create a new CMS collection. It comes with the built-in fields ID, Status, Name, Slug, Created Date and Updated Date (returned in \`fields\`).
+Use the built-in Name field for item titles and Slug for dynamic page URLs — do not add your own name/title or slug fields. Then use add_collection_field for the remaining schema.`,
     {
       name: z.string().describe('Collection name (e.g. "Blog Posts", "Team Members")'),
       sorting: sortingSchema.optional(),
     },
     async ({ name, sorting }) => {
       const collection = await createCollection({ name, sorting: sorting as CollectionSorting | undefined });
-      return { content: [{ type: 'text' as const, text: JSON.stringify(collection) }] };
+      const fields = await createFields(
+        getNewCollectionBuiltInFields().map((field) => ({ ...field, collection_id: collection.id })),
+      );
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            ...collection,
+            fields: fields.map((f) => ({ id: f.id, name: f.name, type: f.type, key: f.key })),
+          }),
+        }],
+      };
     },
   );
 
@@ -110,7 +123,6 @@ FIELD TYPES:
       collection_id: z.string().describe('The collection ID'),
       name: z.string().describe('Field display name'),
       type: fieldTypeEnum,
-      key: z.string().optional().describe('Unique field key (auto-generated from name if omitted)'),
       reference_collection_id: z.string().optional().describe('For reference / multi_reference fields: the target collection ID'),
       default: z.string().optional().describe('Default value applied to new items'),
       fillable: z.boolean().optional().describe('Whether this field can be set via the API / form submissions. Defaults true.'),
