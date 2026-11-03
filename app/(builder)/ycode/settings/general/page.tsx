@@ -623,7 +623,7 @@ export default function GeneralSettingsPage() {
                     Contents of &ldquo;llms.txt&rdquo;
                   </FieldLabel>
                   <FieldDescription>
-                    If populated, will replace the content of the default /llms.txt file. Learn more about this file at llmstxt.org.
+                    If populated, this content will be served at /llms.txt. Learn more about this file at llmstxt.org.
                   </FieldDescription>
                   <Textarea
                     id="llms"
