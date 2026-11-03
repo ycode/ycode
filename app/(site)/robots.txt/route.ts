@@ -10,7 +10,7 @@ import { getSettingsByKeys } from '@/lib/repositories/settingsRepository';
 import { credentials } from '@/lib/credentials';
 import { getRequestOrigin, getSiteBaseUrl } from '@/lib/url-utils';
 import { tagResponseForPublish } from '@/lib/response-cache-tag';
-import type { SitemapSettings } from '@/types';
+import { normalizeSitemapSettings } from '@/lib/sitemap-settings';
 
 // Reads the request origin, so it can never be prerendered at build time
 export const dynamic = 'force-dynamic';
@@ -41,8 +41,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     }
 
     const allSettings = await getSettingsByKeys(['robots_txt', 'sitemap', 'global_canonical_url']);
-    const sitemapSettings = allSettings.sitemap as SitemapSettings | null;
-    const sitemapEnabled = sitemapSettings?.mode && sitemapSettings.mode !== 'none';
+    const sitemapEnabled = normalizeSitemapSettings(allSettings.sitemap).mode !== 'none';
     const baseUrl = getSiteBaseUrl({ globalCanonicalUrl: allSettings.global_canonical_url, requestOrigin }) || '';
 
     let content: string;

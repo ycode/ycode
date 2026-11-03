@@ -5,6 +5,7 @@
  */
 
 import { getSupabaseAdmin } from '@/lib/supabase-server';
+import { normalizeSitemapSettings } from '@/lib/sitemap-settings';
 import type { Setting } from '@/types';
 
 // Postgres "undefined_table" — the settings table is briefly absent right after
@@ -110,6 +111,15 @@ export async function getSettingsByKeys(keys: string[]): Promise<Record<string, 
 }
 
 /**
+ * Coerce structured settings into their expected shape before they are stored,
+ * so a JSON string or partial object can never reach the jsonb column.
+ */
+function normalizeSettingValue(key: string, value: any): any {
+  if (key === 'sitemap') return normalizeSitemapSettings(value);
+  return value;
+}
+
+/**
  * Set a setting value (insert or update)
  *
  * @param key - The setting key
@@ -117,6 +127,8 @@ export async function getSettingsByKeys(keys: string[]): Promise<Record<string, 
  * @returns Promise resolving to the created/updated setting
  */
 export async function setSetting(key: string, value: any): Promise<Setting> {
+  value = normalizeSettingValue(key, value);
+
   const client = await getSupabaseAdmin();
   if (!client) {
     throw new Error('Failed to initialize Supabase client');
@@ -167,7 +179,7 @@ export async function setSettings(settings: Record<string, any>): Promise<number
     if (value === null || value === undefined) {
       toDelete.push(key);
     } else {
-      toUpsert.push([key, value]);
+      toUpsert.push([key, normalizeSettingValue(key, value)]);
     }
   }
 
