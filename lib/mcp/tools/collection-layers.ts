@@ -15,6 +15,7 @@ import {
   BINDABLE_TEXT_LAYER_NAMES,
   bindLayerToField,
   buildDynamicTextDoc,
+  getFieldsCached,
   resolveBindingContext,
 } from '@/lib/mcp/field-binding';
 import { bindingSourceEnum, dynamicTextSegmentSchema } from './shared-schemas';
@@ -271,7 +272,8 @@ at runtime instead of a static value (use input_layer_id2 for the second bound o
     'bind_layer_field',
     `Bind a layer's content to a CMS collection field so it shows live data per item. Use this on
 elements INSIDE a Collection List (source "collection") or anywhere on a dynamic CMS page
-(source "page") to wire up titles, images, prices, etc.
+(source "page") to wire up titles, images, prices, etc. Source "global" binds ANY layer on any
+page to a site-wide global variable (field_id = global variable ID from list_global_variables).
 
 WHAT GETS BOUND (by layer type):
 - text / heading / richText → the text content (optionally wrapped with prefix/suffix, e.g. "By " + Author)
@@ -292,9 +294,9 @@ one batch_operations call instead of one call per field.`,
     {
       page_id: z.string().describe('The page ID'),
       layer_id: z.string().describe('The layer whose content to bind'),
-      field_id: z.string().describe('The collection field ID to bind to'),
-      source: z.enum(['collection', 'page']).default('collection')
-        .describe('"collection" = nearest ancestor Collection List (default). "page" = the dynamic page\'s collection item.'),
+      field_id: z.string().describe('The collection field ID to bind to (global variable ID when source is "global")'),
+      source: bindingSourceEnum.default('collection')
+        .describe('"collection" = nearest ancestor Collection List (default). "page" = the dynamic page\'s collection item. "global" = a site-wide global variable.'),
       target: z.enum(['auto', 'src', 'alt', 'poster', 'background']).default('auto')
         .describe('What to bind. "auto" picks by layer type (text→text, image/video/audio→src). Use "alt", "poster", or "background" for those specific targets.'),
       format: z.string().optional().describe('Optional value format (e.g. a date format) applied when rendering the field.'),
@@ -339,12 +341,16 @@ isn't enough.
 
 Provide ordered segments: { type: "text", text } literals interleaved with { type: "field", field_id }
 references. Works on text / heading / richText layers, inside a Collection List (source "collection")
-or on a dynamic CMS page (source "page").`,
+or on a dynamic CMS page (source "page").
+
+GLOBAL VARIABLES (source "global", any page): field_id is a global variable ID, e.g. "Only " +
+price_per_photo + " per photo". Changing the global's value then updates every layer using it.
+Keep the same global in each locale's translation of the layer (see the localization guide).`,
     {
       page_id: z.string().describe('The page ID'),
       layer_id: z.string().describe('The text / heading / richText layer'),
       source: bindingSourceEnum.default('collection')
-        .describe('"collection" = nearest ancestor Collection List (default). "page" = the dynamic page\'s collection item.'),
+        .describe('"collection" = nearest ancestor Collection List (default). "page" = the dynamic page\'s collection item. "global" = site-wide global variables.'),
       segments: z.array(dynamicTextSegmentSchema).min(1)
         .describe('Ordered segments interleaving literal text and field references.'),
     },
@@ -368,7 +374,7 @@ or on a dynamic CMS page (source "page").`,
       }
       const { collectionId, collectionLayerId } = ctx;
 
-      const fields = await getFieldsByCollectionId(collectionId);
+      const fields = await getFieldsCached(collectionId);
       const fieldsById = new Map<string, CollectionField>(fields.map((f) => [f.id, f]));
 
       const built = buildDynamicTextDoc(segments, fieldsById, source, collectionLayerId);

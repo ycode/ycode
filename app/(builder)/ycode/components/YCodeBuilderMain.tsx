@@ -57,6 +57,7 @@ const RealtimeCursors = lazy(() => import('@/components/realtime-cursors').then(
 import { useEditorUrl } from '@/hooks/use-editor-url';
 import { useLiveColorVariableUpdates } from '@/hooks/use-live-color-variable-updates';
 import { useLiveFontUpdates } from '@/hooks/use-live-font-updates';
+import { useLiveGlobalVariableUpdates } from '@/hooks/use-live-global-variable-updates';
 import { useLiveLayerUpdates } from '@/hooks/use-live-layer-updates';
 import { useLivePageUpdates } from '@/hooks/use-live-page-updates';
 import { useLiveComponentUpdates } from '@/hooks/use-live-component-updates';
@@ -227,6 +228,8 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
   useLiveFontUpdates();
   // Refetch color variables when the AI agent creates/updates tokens server-side
   useLiveColorVariableUpdates();
+  // Refetch global variables when the AI agent creates/updates them server-side
+  useLiveGlobalVariableUpdates();
 
   // Collaboration presence - set current user for syncing
   const setCurrentCollaborationUser = useCollaborationPresenceStore((state) => state.setCurrentUser);

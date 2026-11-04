@@ -68,7 +68,7 @@ import {
 } from '@/components/ui/context-menu';
 import { CollectionFieldSelector, type FieldSourceType } from './CollectionFieldSelector';
 import { flattenFieldGroups, filterFieldGroupsByType, RICH_TEXT_ONLY_FIELD_TYPES, type FieldGroup } from '@/lib/collection-field-utils';
-import { buildFieldVariableData } from '@/lib/variable-format-utils';
+import { buildFieldVariableData, collectFieldVariableFormats, withMatchingVariableFormat } from '@/lib/variable-format-utils';
 import { getPaginationLayerKind, PAGINATION_VARIABLE_LABELS, type PaginationVariableKey } from '@/lib/pagination-text-utils';
 import { createDynamicVariableNodeView } from '@/lib/dynamic-variable-view';
 import { parseRichTextDoc, toEditorJSON } from '@/lib/tiptap-utils';
@@ -126,6 +126,8 @@ interface RichTextEditorProps {
   onExpandClick?: () => void;
   /** CMS field types allowed for variable binding (defaults to RICH_TEXT_FIELD_TYPES) */
   allowedFieldTypes?: CollectionFieldType[];
+  /** Tiptap doc whose variable formats are reused for inserted variables (e.g. a translation's original text) */
+  variableFormatSource?: unknown;
 }
 
 export interface RichTextEditorHandle {
@@ -423,6 +425,7 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
   fullHeight = false,
   onExpandClick,
   allowedFieldTypes = RICH_TEXT_ONLY_FIELD_TYPES,
+  variableFormatSource,
 }, ref) => {
   const isFullVariant = variant === 'full';
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -445,6 +448,11 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
 
   // Derive a flat list of fields from fieldGroups (for internal use like parseValueToContent)
   const fields = useMemo(() => flattenFieldGroups(fieldGroups), [fieldGroups]);
+
+  const sourceVariableFormats = useMemo(
+    () => (variableFormatSource ? collectFieldVariableFormats(variableFormatSource) : undefined),
+    [variableFormatSource]
+  );
 
   const textFieldGroups = useMemo(
     () => filterFieldGroupsByType(fieldGroups, allowedFieldTypes),
@@ -881,7 +889,10 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(({
 
   const handleFieldSelect = (fieldId: string, relationshipPath: string[], source?: FieldSourceType, layerId?: string) => {
     const field = fields.find(f => f.id === fieldId);
-    addFieldVariableInternal(buildFieldVariableData(fieldId, relationshipPath, field?.type ?? null, source, layerId));
+    addFieldVariableInternal(withMatchingVariableFormat(
+      buildFieldVariableData(fieldId, relationshipPath, field?.type ?? null, source, layerId),
+      sourceVariableFormats
+    ));
 
     setIsDropdownOpen(false);
   };

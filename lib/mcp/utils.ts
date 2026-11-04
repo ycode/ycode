@@ -3,7 +3,7 @@
  * These are simplified versions focused on the MCP tool use case.
  */
 
-import type { Layer, DesignProperties, Breakpoint, UIState, CollectionField, TranslationContentType, LinkSettings, Page } from '@/types';
+import type { Layer, DesignProperties, Breakpoint, UIState, CollectionField, TranslationContentType, LinkSettings, Page, GlobalVariableType } from '@/types';
 import { resolveOptionValue } from '@/lib/collection-field-utils';
 import { generateId } from '@/lib/utils';
 import { findParentCollectionLayer } from '@/lib/layer-utils';
@@ -294,6 +294,21 @@ export function coerceRichTextValue(value: unknown): string | null {
 
   // Unknown object shape: stringify so it at least round-trips through storage.
   return JSON.stringify(value);
+}
+
+/**
+ * Normalize an agent-supplied global variable value to its stored text form:
+ * rich text becomes Tiptap JSON (markdown accepted) and a bare URL becomes a
+ * link value. Other types are stored as given.
+ */
+export function coerceGlobalVariableValue(type: GlobalVariableType, value: string | null): string | null {
+  if (value === null) return null;
+  if (type === 'rich_text') return coerceRichTextValue(value);
+  const trimmed = value.trim();
+  if (type === 'link' && trimmed && !trimmed.startsWith('{')) {
+    return JSON.stringify({ type: 'url', url: trimmed });
+  }
+  return value;
 }
 
 /**

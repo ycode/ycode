@@ -10,7 +10,7 @@ import type { CollectionField, CollectionFieldType, Layer } from '@/types';
 /** Layer types whose text content can be bound to a CMS field. */
 export const BINDABLE_TEXT_LAYER_NAMES = new Set(['text', 'heading', 'richText']);
 
-export type BindingSource = 'collection' | 'page';
+export type BindingSource = 'collection' | 'page' | 'global';
 export type BindingTarget = 'auto' | 'src' | 'alt' | 'poster' | 'background';
 
 export interface FieldData {
@@ -19,10 +19,11 @@ export interface FieldData {
   relationships: string[];
   source: BindingSource;
   collection_layer_id?: string;
+  global_id?: string;
   format?: string;
 }
 
-/** A field variable's data payload — binds a layer's content to a CMS field. */
+/** A field variable's data payload — binds a layer's content to a CMS field or global variable. */
 export function buildFieldData(
   field: CollectionField,
   source: BindingSource,
@@ -35,8 +36,15 @@ export function buildFieldData(
     relationships: [],
     source,
     ...(collectionLayerId ? { collection_layer_id: collectionLayerId } : {}),
+    ...(source === 'global' ? { global_id: field.id } : {}),
     ...(format ? { format } : {}),
   };
+}
+
+/** Error for a field id that the binding source does not expose. */
+export function fieldNotFoundError(fieldId: string, source: BindingSource): string {
+  if (source === 'global') return `Global variable "${fieldId}" not found. Call list_global_variables for ids.`;
+  return `Field "${fieldId}" not found in the ${source === 'page' ? 'page' : 'list'} collection.`;
 }
 
 /** Wrap a field variable in the `<ycode-inline-variable>` tag used in dynamic-text strings. */
@@ -54,7 +62,7 @@ export function paragraphDoc(content: Record<string, unknown>[]) {
   return { type: 'doc', content: [{ type: 'paragraph', content }] };
 }
 
-/** A literal or a CMS field reference inside dynamic text. */
+/** A literal or a CMS field / global variable reference inside dynamic text. */
 export type DynamicTextSegment =
   | { type: 'text'; text: string }
   | { type: 'field'; field_id: string; format?: string };
@@ -78,7 +86,7 @@ export function buildDynamicTextDoc(
     }
     const field = fieldsById.get(seg.field_id);
     if (!field) {
-      return { error: `Field "${seg.field_id}" not found in the ${source === 'page' ? 'page' : 'list'} collection.` };
+      return { error: fieldNotFoundError(seg.field_id, source) };
     }
     content.push(dynamicVariableNode(buildFieldData(field, source, collectionLayerId, seg.format), field.name));
     fieldCount += 1;

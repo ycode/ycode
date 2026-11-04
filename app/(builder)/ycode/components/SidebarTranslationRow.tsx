@@ -8,6 +8,7 @@ import Icon from '@/components/ui/icon';
 import FileManagerDialog from './FileManagerDialog';
 import RichTextEditor from './RichTextEditor';
 import { extractMultilinePlainTextFromTiptap } from '@/lib/tiptap-utils';
+import { hasTranslationContent } from '@/lib/locale-runtime';
 import { useAsset } from '@/hooks/use-asset';
 import { useAssetsStore } from '@/stores/useAssetsStore';
 import { getAssetIcon, isAssetOfType, getAssetCategoryFromMimeType, ASSET_CATEGORIES } from '@/lib/asset-utils';
@@ -33,20 +34,6 @@ function parseRichTextDoc(value: string): Record<string, unknown> {
     }
   }
   return { ...EMPTY_RICH_TEXT_DOC };
-}
-
-/** True when a serialized Tiptap doc carries no text/variable content. */
-function isEmptyRichTextValue(value: string): boolean {
-  if (!value) return true;
-  try {
-    const doc = JSON.parse(value);
-    if (!doc || !Array.isArray(doc.content)) return true;
-    return !doc.content.some((block: { content?: unknown[] }) =>
-      Array.isArray(block.content) && block.content.length > 0
-    );
-  } catch {
-    return !value.trim();
-  }
 }
 
 interface SidebarTranslationRowProps {
@@ -260,7 +247,7 @@ export default function SidebarTranslationRow({
     // Clearing a translation reverts to the source: store '' (which the renderer
     // treats as "use original") instead of an empty Tiptap doc, matching the
     // localization page behavior.
-    if (isEmptyRichTextValue(finalValue)) {
+    if (!hasTranslationContent(finalValue)) {
       if (!previousValue) return;
       saveTranslationValue('', 'richtext');
       return;
@@ -438,6 +425,7 @@ export default function SidebarTranslationRow({
               collections={collections}
               layer={layer}
               allowedFieldTypes={SIMPLE_TEXT_FIELD_TYPES}
+              variableFormatSource={sourceDoc}
             />
           ) : (
             <Textarea

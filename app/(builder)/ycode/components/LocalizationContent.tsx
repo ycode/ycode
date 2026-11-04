@@ -24,6 +24,7 @@ import { useLocalisationStore } from '@/stores/useLocalisationStore';
 import { usePagesStore } from '@/stores/usePagesStore';
 import { useCollectionsStore } from '@/stores/useCollectionsStore';
 import { useComponentsStore } from '@/stores/useComponentsStore';
+import { useGlobalsStore } from '@/stores/useGlobalsStore';
 import { buildFolderPath, getPageIcon } from '@/lib/page-utils';
 import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Spinner } from '@/components/ui/spinner';
@@ -94,6 +95,7 @@ export default function LocalizationContent({ children }: LocalizationContentPro
   const allFields = useCollectionsStore((state) => state.fields);
   const collections = useCollectionsStore((state) => state.collections);
   const items = useCollectionsStore((state) => state.items);
+  const globals = useGlobalsStore((state) => state.globals);
 
   /**
    * Build CMS variable field groups for a translation item using the same
@@ -118,7 +120,7 @@ export default function LocalizationContent({ children }: LocalizationContentPro
     if (!match) return undefined;
     const layerId = match[1];
     if (!findLayerById(layers, layerId)) return undefined;
-    return buildFieldGroupsForLayer(layerId, layers, page || null, allFields, collections);
+    return buildFieldGroupsForLayer(layerId, layers, page || null, allFields, collections, globals);
   };
 
   /**

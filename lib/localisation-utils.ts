@@ -1056,13 +1056,14 @@ export function injectTranslatedText(
 
     const textValue = getTranslationValue(textTranslation, valueOptions);
     // A layer-level text translation whose value is a rich-text doc still
-    // containing an unresolved `dynamicVariable` node is a binding artefact
-    // (the translation UI re-captured the field binding, not real translated
-    // text). Injecting it raw overwrites the already collection-resolved text
-    // with an unresolvable node, rendering empty. The actual localization for
-    // such bindings comes from the CMS field translation applied during
-    // collection resolution, so skip the layer translation in this case.
-    const textReintroducesDynamicVariable = richTextHasDynamicVariable(textValue);
+    // containing an unresolved collection/page field binding is a binding
+    // artefact (the translation UI re-captured the field binding, not real
+    // translated text). Injecting it raw overwrites the already
+    // collection-resolved text with an unresolvable node, rendering empty. The
+    // actual localization for such bindings comes from the CMS field
+    // translation applied during collection resolution, so skip the layer
+    // translation in this case. Global-variable pills are kept.
+    const textReintroducesDynamicVariable = richTextHasItemBoundVariable(textValue);
     // Only inject when the layer actually has a text variable to translate.
     // Stale/orphan translation rows (e.g. legacy migration artefacts that
     // point at an ancestor div/section without `variables.text`) would
@@ -1412,12 +1413,17 @@ export function looksLikeTiptapJson(value: string | null | undefined): boolean {
 
 /**
  * Whether a serialized rich-text value still contains an unresolved
- * `dynamicVariable` node (a field/collection binding). Such values must not be
- * injected as layer text — the binding renders empty outside the collection
- * resolution pipeline.
+ * collection/page field binding. Such values must not be injected as layer
+ * text — the binding renders empty outside the collection resolution pipeline.
+ * Global-variable pills resolve at render time anywhere, so they don't count.
  */
-export function richTextHasDynamicVariable(value: string | null | undefined): boolean {
-  return typeof value === 'string' && value.includes('"dynamicVariable"');
+export function richTextHasItemBoundVariable(value: string | null | undefined): boolean {
+  if (typeof value !== 'string' || !value.includes('"dynamicVariable"')) return false;
+  try {
+    return hasVariableNode(JSON.parse(value), (node) => node.attrs?.variable?.data?.source !== 'global');
+  } catch {
+    return true;
+  }
 }
 
 /**

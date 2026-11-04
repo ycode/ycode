@@ -33,6 +33,8 @@ interface RichTextEditorSheetProps {
   collections?: Collection[];
   /** Hide "Current page item" and "Reference field" options */
   hidePageContextOptions?: boolean;
+  /** Tiptap doc whose variable formats are reused for inserted variables */
+  variableFormatSource?: unknown;
 }
 
 export default function RichTextEditorSheet({
@@ -47,6 +49,7 @@ export default function RichTextEditorSheet({
   allFields,
   collections,
   hidePageContextOptions = false,
+  variableFormatSource,
 }: RichTextEditorSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -87,6 +90,7 @@ export default function RichTextEditorSheet({
           fullHeight
           allowedFieldTypes={RICH_TEXT_FIELD_TYPES}
           hidePageContextOptions={hidePageContextOptions}
+          variableFormatSource={variableFormatSource}
         />
       </SheetContent>
     </Sheet>
