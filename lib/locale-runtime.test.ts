@@ -12,6 +12,7 @@ test('blank values and empty rich-text docs have no content', () => {
   assert.equal(hasTranslationContent(null), false);
   assert.equal(hasTranslationContent(EMPTY_DOC), false);
   assert.equal(hasTranslationContent('{"type":"doc","content":[{"type":"paragraph"},{"type":"paragraph"}]}'), false);
+  assert.equal(hasTranslationContent('{"type":"doc","content":[{"type":"heading","attrs":{"level":2},"content":[]}]}'), false);
 });
 
 test('text, rich-text docs and non-doc JSON have content', () => {
