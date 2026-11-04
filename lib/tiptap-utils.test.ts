@@ -68,12 +68,13 @@ test('returns an empty doc for empty values', () => {
   assert.deepEqual(parseRichTextDoc(null), empty);
 });
 
-test('treats blank values and empty-paragraph docs as empty rich text', () => {
+test('treats blank values and empty paragraph/heading docs as empty rich text', () => {
   assert.equal(isRichTextEmpty(''), true);
   assert.equal(isRichTextEmpty(null), true);
   assert.equal(isRichTextEmpty('{"type":"doc","content":[{"type":"paragraph"}]}'), true);
   assert.equal(isRichTextEmpty({ type: 'doc', content: [{ type: 'paragraph' }, { type: 'paragraph', content: [] }] }), true);
   assert.equal(isRichTextEmpty({ type: 'doc' }), true);
+  assert.equal(isRichTextEmpty('{"type":"doc","content":[{"type":"heading","attrs":{"level":2},"content":[]}]}'), true);
 });
 
 test('treats docs with text or non-paragraph blocks as non-empty rich text', () => {

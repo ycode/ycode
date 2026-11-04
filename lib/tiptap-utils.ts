@@ -46,11 +46,14 @@ export function parseRichTextDoc(value: unknown): JSONContent {
   return { type: 'doc', content: [{ type: 'paragraph' }] };
 }
 
-/** Whether a stored rich-text value has no content (blank, or only empty paragraphs). */
+/** Text blocks that carry nothing when they have no children (an emptied editor keeps the block type). */
+const EMPTYABLE_TEXT_BLOCKS = new Set(['paragraph', 'heading']);
+
+/** Whether a stored rich-text value has no content (blank, or only empty paragraphs/headings). */
 export function isRichTextEmpty(value: unknown): boolean {
   const blocks = parseRichTextDoc(value).content;
   if (!Array.isArray(blocks)) return true;
-  return blocks.every((block) => block.type === 'paragraph' && !block.content?.length);
+  return blocks.every((block) => EMPTYABLE_TEXT_BLOCKS.has(block.type ?? '') && !block.content?.length);
 }
 
 /**
