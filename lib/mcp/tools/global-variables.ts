@@ -107,6 +107,11 @@ publishing. ${VALUE_FORMATS}`,
       global_id: z.string().describe('The global variable ID to delete'),
     },
     async ({ global_id }) => {
+      const existing = await getGlobalVariableById(global_id);
+      if (!existing) {
+        return { content: [{ type: 'text' as const, text: `Error: Global variable "${global_id}" not found.` }], isError: true };
+      }
+
       await softDeleteGlobalVariable(global_id);
       await broadcastGlobalVariablesChanged();
       return {
