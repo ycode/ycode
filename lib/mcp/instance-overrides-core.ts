@@ -6,7 +6,7 @@
  */
 
 import type { CollectionField, ComponentVariableValue, FieldVariable, Layer, LinkSettings } from '@/types';
-import { buildDynamicTextDoc, buildFieldData } from '@/lib/mcp/field-binding-core';
+import { buildDynamicTextDoc, buildFieldData, fieldNotFoundError } from '@/lib/mcp/field-binding-core';
 import type { BindingSource, DynamicTextSegment } from '@/lib/mcp/field-binding-core';
 import {
   buildLinkSettings,
@@ -79,7 +79,7 @@ async function resolveFieldVariable(
   if ('error' in binding) return binding;
   const field = binding.fields.find((f) => f.id === fieldId);
   if (!field) {
-    return { error: `Field "${fieldId}" not found in the ${binding.source === 'page' ? 'page' : 'list'} collection.` };
+    return { error: fieldNotFoundError(fieldId, binding.source) };
   }
   return { variable: { type: 'field', data: buildFieldData(field, binding.source, binding.collectionLayerId, undefined) } };
 }

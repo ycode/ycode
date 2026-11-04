@@ -441,7 +441,7 @@ there is one) or "page" (the dynamic page's item).`,
         field_id: z.string().optional()
           .describe('For image/video/audio/link variables: bind to this CMS field (overrides asset_id / url / link_page_id)'),
         source: bindingSourceEnum.optional()
-          .describe('Where segments / field_id resolve from: "collection" (nearest ancestor Collection List) or "page" (dynamic page item). Defaults to "collection" inside a Collection List, else "page".'),
+          .describe('Where segments / field_id resolve from: "collection" (nearest ancestor Collection List), "page" (dynamic page item) or "global" (site-wide global variable, field_id = global ID). Defaults to "collection" inside a Collection List, else "page".'),
         asset_id: z.string().optional().describe('For image/icon/audio/video variables: asset ID to display'),
         alt: z.string().optional().describe('For image variables: alt text'),
         url: z.string().optional().describe('For link variables: external URL'),
