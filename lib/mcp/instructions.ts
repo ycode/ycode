@@ -732,6 +732,14 @@ repeated card; its parent div is the list container that holds the grid/gap):
 Show/hide ANY layer conditionally (sale badges, empty states) with set_layer_visibility —
 same condition model as set_collection_filters.
 
+**Global variables** (one value reused site-wide: prices, counts, "10 free generations"):
+list_global_variables / create_global_variable / update_global_variable. Put them into text on
+ANY page or component with set_dynamic_text source "global" (e.g. "Only " + price + " per photo"),
+or bind_layer_field / bind_field / set_component_instance with source "global". Replacing a
+hardcoded value across a site: find the layers with get_layers search, rewrite each with
+set_dynamic_text keeping the surrounding words, then update every locale's translation of those
+layers (see the localization guide). Changing the value is then one update_global_variable.
+
 **Checking CMS output without publishing:** export_layer_html with rendered: true returns the
 section as the published page would show it — Collection Lists repeated with real draft items,
 fields filled in, visibility applied, links resolved. On a dynamic page it renders the first
@@ -769,6 +777,9 @@ Translating a lot of content efficiently (avoid token waste and many round-trips
 - Rich text in a batch: set content_type "richtext" with content_value as a JSON-stringified
   Tiptap doc. Use set_rich_text_translation (structured blocks) only for a single field.
   Plain text sent to a rich_text key will not render.
+- Text bound to a global variable has a "richtext" source_value containing dynamicVariable
+  nodes with source "global". Translate only the text nodes and copy those nodes unchanged into
+  the translated doc, so the value stays shared across locales.
 
 - Translations are marked complete by default. Only pass is_completed: false for drafts —
   incomplete translations NEVER appear on the live site. Translations stay drafts until published.`,

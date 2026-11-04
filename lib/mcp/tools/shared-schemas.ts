@@ -35,18 +35,18 @@ export const richTextBlockSchema = z.object({
   component_id: z.string().optional().describe('For component: ID of the component to embed'),
 });
 
-/** Where a CMS field binding reads its item from. */
-export const bindingSourceEnum = z.enum(['collection', 'page']);
+/** Where a field binding reads its value from: a CMS item or a site-wide global variable. */
+export const bindingSourceEnum = z.enum(['collection', 'page', 'global']);
 
 /**
- * One segment of dynamic text: a literal or a CMS field reference. Shared by
+ * One segment of dynamic text: a literal or a field reference. Shared by
  * set_dynamic_text and component instance text overrides.
  */
 export const dynamicTextSegmentSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), text: z.string().describe('Literal text.') }),
   z.object({
     type: z.literal('field'),
-    field_id: z.string().describe('Collection field ID to insert.'),
+    field_id: z.string().describe('Collection field ID to insert (global variable ID when source is "global").'),
     format: z.string().optional().describe('Optional value format (e.g. a date format).'),
   }),
 ]);

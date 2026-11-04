@@ -181,3 +181,17 @@ export async function broadcastColorVariablesChanged(): Promise<void> {
     timestamp: Date.now(),
   });
 }
+
+// Global variable broadcasts (channel: global-variables:updates)
+
+/**
+ * Tell open builders the global variable set changed (agent create/update/
+ * delete). Pills resolve their value and label from the client globals store,
+ * so without this an agent-created global renders empty until a reload.
+ */
+export async function broadcastGlobalVariablesChanged(): Promise<void> {
+  await broadcast('global-variables:updates', 'global_variables_changed', {
+    user_id: MCP_USER_ID,
+    timestamp: Date.now(),
+  });
+}

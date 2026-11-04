@@ -160,6 +160,12 @@ export const TOOL_META: Record<string, ToolMeta> = {
   delete_color_variable: destructive('Delete color variable'),
   reorder_color_variables: write('Reorder color variables'),
 
+  // Global variables
+  list_global_variables: read('List global variables'),
+  create_global_variable: write('Create global variable'),
+  update_global_variable: write('Update global variable'),
+  delete_global_variable: destructive('Delete global variable'),
+
   // Fonts
   list_fonts: read('List fonts'),
   search_google_fonts: read('Search Google Fonts'),

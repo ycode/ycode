@@ -6,18 +6,21 @@
 
 import type { CollectionField, Layer } from '@/types';
 import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepository';
+import { getAllGlobalVariables } from '@/lib/repositories/globalVariableRepository';
 import { getPageById } from '@/lib/repositories/pageRepository';
-import { applyFieldBinding, buildFieldData } from '@/lib/mcp/field-binding-core';
+import { applyFieldBinding, buildFieldData, fieldNotFoundError } from '@/lib/mcp/field-binding-core';
 import type { BindingSource, BindingTarget } from '@/lib/mcp/field-binding-core';
+import { GLOBALS_COLLECTION_ID, globalToPseudoField } from '@/lib/collection-field-utils';
 import { findParentCollectionLayer } from '@/lib/layer-utils';
 
 export * from '@/lib/mcp/field-binding-core';
 
 /**
  * Resolve the collection a binding should pull from: the nearest ancestor
- * Collection List (source "collection") or the dynamic page's own collection
- * (source "page"). Returns the collection id plus, for the collection source,
- * the ancestor list layer id stamped onto the FieldVariable.
+ * Collection List (source "collection"), the dynamic page's own collection
+ * (source "page"), or the site-wide globals (source "global", any layer).
+ * Returns the collection id plus, for the collection source, the ancestor list
+ * layer id stamped onto the FieldVariable.
  */
 export async function resolveBindingContext(
   layers: Layer[],
@@ -25,6 +28,10 @@ export async function resolveBindingContext(
   pageId: string,
   source: BindingSource,
 ): Promise<{ collectionId: string; collectionLayerId?: string } | { error: string }> {
+  if (source === 'global') {
+    return { collectionId: GLOBALS_COLLECTION_ID };
+  }
+
   if (source === 'collection') {
     const parent = findParentCollectionLayer(layers, layerId);
     if (!parent) {
@@ -57,11 +64,19 @@ export interface FieldBindingInput {
 /** Per-call cache so a batch binding many layers fetches each collection's fields once. */
 export type FieldCache = Map<string, Promise<CollectionField[]>>;
 
+/** Fields of a collection, or the global variables as pseudo fields for GLOBALS_COLLECTION_ID. */
+function getBindableFields(collectionId: string): Promise<CollectionField[]> {
+  if (collectionId === GLOBALS_COLLECTION_ID) {
+    return getAllGlobalVariables().then((globals) => globals.map(globalToPseudoField));
+  }
+  return getFieldsByCollectionId(collectionId);
+}
+
 export function getFieldsCached(collectionId: string, cache?: FieldCache): Promise<CollectionField[]> {
-  if (!cache) return getFieldsByCollectionId(collectionId);
+  if (!cache) return getBindableFields(collectionId);
   let pending = cache.get(collectionId);
   if (!pending) {
-    pending = getFieldsByCollectionId(collectionId);
+    pending = getBindableFields(collectionId);
     cache.set(collectionId, pending);
   }
   return pending;
@@ -84,7 +99,7 @@ export async function bindLayerToField(
   const fields = await getFieldsCached(ctx.collectionId, cache);
   const field = fields.find((f) => f.id === input.field_id);
   if (!field) {
-    return { error: `Field "${input.field_id}" not found in the ${input.source === 'page' ? 'page' : 'list'} collection.` };
+    return { error: fieldNotFoundError(input.field_id, input.source) };
   }
 
   const fieldData = buildFieldData(field, input.source, ctx.collectionLayerId, input.format);

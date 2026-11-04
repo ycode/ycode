@@ -8,6 +8,7 @@
  * template tree behind them into the public bundle.
  */
 
+import { isRichTextEmpty, isTiptapDoc, parseRichTextDoc } from '@/lib/tiptap-utils';
 import type { Page, Translation } from '@/types';
 
 /**
@@ -51,6 +52,17 @@ export function getTranslationByKey(
 }
 
 /**
+ * Whether a stored translation value has content to show. Blank strings and
+ * empty rich-text docs mean "use the original".
+ */
+export function hasTranslationContent(value: string | null | undefined): value is string {
+  if (!value || value.trim() === '') return false;
+  if (!value.trimStart().startsWith('{')) return true;
+  const doc = parseRichTextDoc(value);
+  return !(isTiptapDoc(doc) && isRichTextEmpty(doc));
+}
+
+/**
  * Check if a translation has a valid non-empty text value.
  * Only returns true if translation is completed and has non-empty content.
  */
@@ -58,7 +70,7 @@ export function hasValidTranslationValue(translation: Translation | undefined): 
   if (!translation || !translation.is_completed) {
     return false;
   }
-  return !!(translation.content_value && translation.content_value.trim() !== '');
+  return hasTranslationContent(translation.content_value);
 }
 
 /**
@@ -72,8 +84,7 @@ export function getTranslationValue(
 ): string | undefined {
   if (!translation) return undefined;
   if (options?.includeIncomplete) {
-    const value = translation.content_value;
-    return value && value.trim() !== '' ? value : undefined;
+    return hasTranslationContent(translation.content_value) ? translation.content_value : undefined;
   }
   if (hasValidTranslationValue(translation)) {
     return translation.content_value;

@@ -394,6 +394,70 @@ export function buildFieldVariableData(
   };
 }
 
+type FieldVariable = ReturnType<typeof buildFieldVariableData>;
+
+interface FieldVariableIdentity {
+  field_id?: string;
+  source?: string;
+  relationships?: string[];
+  collection_layer_id?: string;
+  format?: string;
+}
+
+/** Identity of a bound field, ignoring its display format. */
+function getFieldVariableKey(data: FieldVariableIdentity): string {
+  return [
+    data.source ?? '',
+    data.field_id ?? '',
+    (data.relationships ?? []).join('.'),
+    data.collection_layer_id ?? '',
+  ].join('|');
+}
+
+/**
+ * Map each field variable in a Tiptap doc to its display format (first occurrence wins).
+ * A missing format is kept as `undefined` so it can be reproduced as-is.
+ */
+export function collectFieldVariableFormats(doc: unknown): Map<string, string | undefined> {
+  const formats = new Map<string, string | undefined>();
+
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== 'object') return;
+    const { type, attrs, content } = node as {
+      type?: string;
+      attrs?: { variable?: { type?: string; data?: FieldVariableIdentity } };
+      content?: unknown[];
+    };
+    const variable = attrs?.variable;
+    if (type === 'dynamicVariable' && variable?.type === 'field' && variable.data) {
+      const key = getFieldVariableKey(variable.data);
+      if (!formats.has(key)) formats.set(key, variable.data.format);
+    }
+    if (Array.isArray(content)) content.forEach(walk);
+  };
+
+  walk(doc);
+  return formats;
+}
+
+/** Give a new field variable the format the same field uses in `formats`, if it appears there. */
+export function withMatchingVariableFormat(
+  variable: FieldVariable,
+  formats?: Map<string, string | undefined>
+): FieldVariable {
+  const key = getFieldVariableKey(variable.data);
+  if (!formats?.has(key)) return variable;
+
+  const data = { ...variable.data };
+  const format = formats.get(key);
+  if (format) {
+    data.format = format;
+  } else {
+    delete data.format;
+  }
+  return { ...variable, data };
+}
+
 /**
  * Format a date value using a preset ID
  * Falls back to the default display format if preset is not found

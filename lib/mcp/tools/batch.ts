@@ -32,6 +32,7 @@ import { broadcastLayersChanged } from '@/lib/mcp/broadcast';
 import { lintDesign } from '@/lib/mcp/design-lint';
 import { collectFontFamiliesFromDesign, ensureFontsInstalled, fontWarnings } from '@/lib/mcp/font-install';
 import {
+  bindingSourceEnum,
   designSchema,
   richTextBlockSchema,
   templateEnum,
@@ -112,9 +113,9 @@ const setRichTextOp = z.object({
 const bindFieldOp = z.object({
   type: z.literal('bind_field'),
   layer_id: z.string().describe('Layer ID or ref_id whose content to bind to a CMS field'),
-  field_id: z.string().describe('Collection field ID'),
-  source: z.enum(['collection', 'page']).default('collection').optional()
-    .describe('"collection" = nearest ancestor Collection List (default); "page" = the dynamic page\'s item'),
+  field_id: z.string().describe('Collection field ID (global variable ID when source is "global")'),
+  source: bindingSourceEnum.default('collection').optional()
+    .describe('"collection" = nearest ancestor Collection List (default); "page" = the dynamic page\'s item; "global" = a site-wide global variable (any layer)'),
   target: z.enum(['auto', 'src', 'alt', 'poster', 'background']).default('auto').optional()
     .describe('"auto" picks by layer type (text→text, image/video/audio→src); "alt", "poster" or "background" for those targets'),
   format: z.string().optional().describe('Optional value format (e.g. a date format)'),

@@ -285,12 +285,12 @@ export function getSoleCmsFieldBinding(content: any): ReturnType<typeof getCmsFi
   return getCmsFieldBinding(nodes[0]);
 }
 
-/** True if a Tiptap doc contains at least one dynamicVariable node. */
-export function hasVariableNode(doc: any): boolean {
+/** True if a Tiptap doc contains at least one dynamicVariable node (matching `predicate` when given). */
+export function hasVariableNode(doc: any, predicate?: (node: any) => boolean): boolean {
   if (!doc?.content || !Array.isArray(doc.content)) return false;
   const walk = (nodes: any[]): boolean => nodes.some((n: any) => {
     if (!n || typeof n !== 'object') return false;
-    if (n.type === 'dynamicVariable') return true;
+    if (n.type === 'dynamicVariable' && (!predicate || predicate(n))) return true;
     if (Array.isArray(n.content)) return walk(n.content);
     return false;
   });

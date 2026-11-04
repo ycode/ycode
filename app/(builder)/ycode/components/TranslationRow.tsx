@@ -11,6 +11,7 @@ import RichTextEditorSheet from './RichTextEditorSheet';
 import type { FieldGroup } from './CollectionFieldSelector';
 import FileManagerDialog from './FileManagerDialog';
 import { sanitizeSlug, checkDuplicatePageSlug, checkDuplicateFolderSlug, type ValidationResult } from '@/lib/page-utils';
+import { hasTranslationContent } from '@/lib/locale-runtime';
 import { looksLikeTiptapJson } from '@/lib/localisation-utils';
 import { tiptapDocToCanonicalString } from '@/lib/tiptap-utils';
 import { parseValueToContent } from '@/lib/cms-variables-utils';
@@ -160,14 +161,19 @@ export default function TranslationRow({
     })()
   );
 
+  // Original value as a Tiptap doc: drives the placeholder preview and the default
+  // format of variables inserted into the translation.
+  const originalDoc = (() => {
+    if (isCode) return null;
+    if (isRichText && typeof originalValueForEditor === 'object') return originalValueForEditor;
+    return item.content_value ? parseValueToContent(item.content_value, flatFields, undefined, allFields) : null;
+  })();
+
   // Build a preview string from the original value for use as the right-side placeholder.
   // Variable references are rendered as `[Label]` so they're clearly distinguished from
   // user-translatable text (mirrors the old localization UI).
   const originalPreviewText = (() => {
-    if (isCode) return '';
-    const tiptapDoc = isRichText && typeof originalValueForEditor === 'object'
-      ? originalValueForEditor
-      : (item.content_value ? parseValueToContent(item.content_value, flatFields, undefined, allFields) : null);
+    const tiptapDoc = originalDoc;
     if (!tiptapDoc?.content) return '';
     const walk = (nodes: any[]): string =>
       nodes.map((n: any) => {
@@ -240,6 +246,8 @@ export default function TranslationRow({
     // For rich text, stringify Tiptap JSON object to store as string
     if (isRichText && typeof value === 'object') {
       finalValue = JSON.stringify(value);
+      // An empty doc is stored as '' so the renderer falls back to the original
+      if (!hasTranslationContent(finalValue)) finalValue = '';
     } else if (isSlugField && typeof value === 'string') {
       // Slugify and validate if this is a slug field
       // Finalize slug (remove trailing dashes)
@@ -728,6 +736,7 @@ export default function TranslationRow({
                 withFormatting={true}
                 showFormattingToolbar={false}
                 allowedFieldTypes={SIMPLE_TEXT_FIELD_TYPES}
+                variableFormatSource={originalDoc}
               />
             ) : (
               <RichTextEditor
@@ -747,6 +756,7 @@ export default function TranslationRow({
                 allFields={allFields}
                 collections={collections}
                 allowedFieldTypes={SIMPLE_TEXT_FIELD_TYPES}
+                variableFormatSource={originalDoc}
               />
             )}
             {validationError && (
@@ -807,6 +817,7 @@ export default function TranslationRow({
           fieldGroups={fieldGroups}
           allFields={allFields}
           collections={collections}
+          variableFormatSource={originalDoc}
         />
       )}
     </li>
