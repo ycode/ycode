@@ -11,6 +11,7 @@ import RichTextEditorSheet from './RichTextEditorSheet';
 import type { FieldGroup } from './CollectionFieldSelector';
 import FileManagerDialog from './FileManagerDialog';
 import { sanitizeSlug, checkDuplicatePageSlug, checkDuplicateFolderSlug, type ValidationResult } from '@/lib/page-utils';
+import { hasTranslationContent } from '@/lib/locale-runtime';
 import { looksLikeTiptapJson } from '@/lib/localisation-utils';
 import { tiptapDocToCanonicalString } from '@/lib/tiptap-utils';
 import { parseValueToContent } from '@/lib/cms-variables-utils';
@@ -245,6 +246,8 @@ export default function TranslationRow({
     // For rich text, stringify Tiptap JSON object to store as string
     if (isRichText && typeof value === 'object') {
       finalValue = JSON.stringify(value);
+      // An empty doc is stored as '' so the renderer falls back to the original
+      if (!hasTranslationContent(finalValue)) finalValue = '';
     } else if (isSlugField && typeof value === 'string') {
       // Slugify and validate if this is a slug field
       // Finalize slug (remove trailing dashes)
