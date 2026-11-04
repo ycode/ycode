@@ -438,6 +438,7 @@ export default function SidebarTranslationRow({
               collections={collections}
               layer={layer}
               allowedFieldTypes={SIMPLE_TEXT_FIELD_TYPES}
+              variableFormatSource={sourceDoc}
             />
           ) : (
             <Textarea
