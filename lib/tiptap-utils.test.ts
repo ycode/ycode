@@ -6,7 +6,7 @@ import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
 import OrderedList from '@tiptap/extension-ordered-list';
 import ListItem from '@tiptap/extension-list-item';
-import { isRichTextEmpty, parseRichTextDoc, toEditorJSON } from '@/lib/tiptap-utils';
+import { isRichTextEmpty, parseRichTextDoc, parseTiptapDocOrNull, toEditorJSON } from '@/lib/tiptap-utils';
 
 const schema = getSchema([Document, Paragraph, Text, OrderedList, ListItem]);
 
@@ -81,4 +81,16 @@ test('treats docs with text or non-paragraph blocks as non-empty rich text', () 
   assert.equal(isRichTextEmpty(JSON.stringify({ type: 'doc', content: [paragraph('Hi')] })), false);
   assert.equal(isRichTextEmpty({ type: 'doc', content: [{ type: 'richTextImage', attrs: { src: 'a.png' } }] }), false);
   assert.equal(isRichTextEmpty('Legacy plain text'), false);
+});
+
+test('parses only stringified Tiptap docs', () => {
+  assert.deepEqual(parseTiptapDocOrNull(JSON.stringify({ type: 'doc', content: [{ type: 'image', attrs: { src: 'a.png' } }] })), {
+    type: 'doc',
+    content: [{ type: 'richTextImage', attrs: { src: 'a.png' } }],
+  });
+  assert.equal(parseTiptapDocOrNull('<p>Legacy <strong>HTML</strong></p>'), null);
+  assert.equal(parseTiptapDocOrNull('Plain text'), null);
+  assert.equal(parseTiptapDocOrNull('{"type":"paragraph"}'), null);
+  assert.equal(parseTiptapDocOrNull('{broken'), null);
+  assert.equal(parseTiptapDocOrNull(null), null);
 });

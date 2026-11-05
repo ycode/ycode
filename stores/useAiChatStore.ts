@@ -314,6 +314,7 @@ const NON_VISUAL_TOOLS = new Set([
   'set_setting',
   'set_translation',
   'set_rich_text_translation',
+  'set_rich_text_segments',
   'batch_set_translations',
   'create_locale',
 ]);

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { JSONContent } from '@tiptap/core';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   getAllLocales,
@@ -11,6 +12,9 @@ import {
   getTranslationsByLocale,
   getTranslationsBySource,
   getCmsTranslationsForItems,
+  getTranslationByKey,
+  getDraftTranslationVersion,
+  saveDraftTranslationIfUnchanged,
   createTranslation,
   updateTranslation,
   deleteTranslation,
@@ -19,7 +23,7 @@ import {
 import { getPageById } from '@/lib/repositories/pageRepository';
 import { getAllComponents, getComponentById } from '@/lib/repositories/componentRepository';
 import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepository';
-import { getItemsWithValues } from '@/lib/repositories/collectionItemRepository';
+import { getItemsWithValues, getItemWithValues } from '@/lib/repositories/collectionItemRepository';
 import { getCachedLayers } from '@/lib/mcp/page-layers';
 import {
   extractPageTranslatableItems,
@@ -30,6 +34,13 @@ import type { TranslatableItem } from '@/lib/localisation-utils';
 import { getTranslatableKey } from '@/lib/locale-runtime';
 import { buildTiptapDoc, validateTranslationContent } from '@/lib/mcp/utils';
 import type { RichTextBlock } from '@/lib/mcp/utils';
+import {
+  applyRichTextSegments,
+  getRichTextSegments,
+  getRichTextStructureKey,
+  getTranslatedSegmentIndexes,
+} from '@/lib/rich-text-segments';
+import { parseTiptapDocOrNull } from '@/lib/tiptap-utils';
 import type { ComponentVariant, Layer, TranslationContentType } from '@/types';
 
 const richTextBlockSchema = z.object({
@@ -38,6 +49,79 @@ const richTextBlockSchema = z.object({
   level: z.number().optional().describe('Heading level 1-6 (for heading type)'),
   items: z.array(z.string()).optional().describe('List items (for bulletList/orderedList)'),
 });
+
+const DEFAULT_SEGMENTS_LIMIT = 200;
+const MAX_SEGMENTS_LIMIT = 500;
+const MAX_SEGMENT_SAVE_ATTEMPTS = 10;
+
+type ErrorResult = { error: string };
+
+/** Translatable items of a page or component, read from its draft layers. */
+async function loadTranslatableItems(
+  sourceType: 'page' | 'component',
+  sourceId: string
+): Promise<{ items: TranslatableItem[] } | ErrorResult> {
+  // Pass components so per-instance override rows get rich
+  // "Component › Variable" labels instead of falling back to layer names.
+  const components = await getAllComponents(false).catch(() => []);
+
+  if (sourceType === 'page') {
+    const page = await getPageById(sourceId);
+    if (!page) return { error: `Page "${sourceId}" not found.` };
+    const layers = await getCachedLayers(sourceId);
+    return { items: extractPageTranslatableItems(page, layers, undefined, components) };
+  }
+
+  const component = await getComponentById(sourceId);
+  if (!component) return { error: `Component "${sourceId}" not found.` };
+  const variants = component.variants as ComponentVariant[] | undefined;
+  const layers = (variants?.[0]?.layers || (component.layers as Layer[]) || []);
+  return { items: extractComponentTranslatableItems({ id: component.id, name: component.name }, layers, components) };
+}
+
+/** Source Tiptap doc of a rich-text content key (CMS source_id is the collection item ID). */
+async function loadRichTextSourceDoc(
+  sourceType: 'page' | 'component' | 'cms',
+  sourceId: string,
+  contentKey: string
+): Promise<{ doc: JSONContent } | ErrorResult> {
+  let items: TranslatableItem[];
+  if (sourceType === 'cms') {
+    const item = await getItemWithValues(sourceId, false);
+    if (!item) return { error: `Collection item "${sourceId}" not found.` };
+    const fields = await getFieldsByCollectionId(item.collection_id);
+    items = extractCmsTranslatableItems({ id: item.id, collection_id: item.collection_id, values: item.values }, fields);
+  } else {
+    const loaded = await loadTranslatableItems(sourceType, sourceId);
+    if ('error' in loaded) return loaded;
+    items = loaded.items;
+  }
+
+  const item = items.find((i) => i.content_key === contentKey);
+  if (!item) {
+    return { error: `No translatable content "${contentKey}" on ${sourceType} "${sourceId}". Use list_translatable_content to find the key.` };
+  }
+  const doc = item.content_type === 'richtext' ? parseTiptapDocOrNull(item.content_value) : null;
+  if (!doc) {
+    return { error: `"${contentKey}" is not a rich-text document. Translate it with set_translation instead.` };
+  }
+  return { doc };
+}
+
+/** Parsed draft translation of a rich-text key, or null. */
+async function loadRichTextTranslationDoc(
+  localeId: string,
+  sourceType: string,
+  sourceId: string,
+  contentKey: string
+): Promise<JSONContent | null> {
+  const translation = await getTranslationByKey(localeId, sourceType, sourceId, contentKey);
+  return parseTiptapDocOrNull(translation?.content_value);
+}
+
+function errorResult(text: string) {
+  return { content: [{ type: 'text' as const, text: `Error: ${text}` }], isError: true };
+}
 
 export function registerLocaleTools(server: McpServer) {
   server.tool(
@@ -338,30 +422,14 @@ export function registerLocaleTools(server: McpServer) {
           { value: t.content_value, is_completed: t.is_completed },
         ]));
 
-      if (source_type === 'page') {
-        const page = await getPageById(source_id);
-        if (!page) {
-          return { content: [{ type: 'text' as const, text: `Error: Page "${source_id}" not found.` }], isError: true };
+      if (source_type !== 'cms') {
+        const loaded = await loadTranslatableItems(source_type, source_id);
+        if ('error' in loaded) {
+          return { content: [{ type: 'text' as const, text: `Error: ${loaded.error}` }], isError: true };
         }
-        const layers = await getCachedLayers(source_id);
-        // Pass components so per-instance override rows get rich
-        // "Component › Variable" labels instead of falling back to layer names.
-        const components = await getAllComponents(false).catch(() => []);
-        items = extractPageTranslatableItems(page, layers, undefined, components);
+        items = loaded.items;
         if (locale_id) {
-          existingByKey = buildExistingMap(await getTranslationsBySource('page', source_id, false, locale_id));
-        }
-      } else if (source_type === 'component') {
-        const component = await getComponentById(source_id);
-        if (!component) {
-          return { content: [{ type: 'text' as const, text: `Error: Component "${source_id}" not found.` }], isError: true };
-        }
-        const variants = component.variants as ComponentVariant[] | undefined;
-        const layers = (variants?.[0]?.layers || (component.layers as Layer[]) || []);
-        const components = await getAllComponents(false).catch(() => []);
-        items = extractComponentTranslatableItems({ id: component.id, name: component.name }, layers, components);
-        if (locale_id) {
-          existingByKey = buildExistingMap(await getTranslationsBySource('component', source_id, false, locale_id));
+          existingByKey = buildExistingMap(await getTranslationsBySource(source_type, source_id, false, locale_id));
         }
       } else {
         const fields = await getFieldsByCollectionId(source_id);
@@ -452,6 +520,123 @@ orderedList, codeBlock, horizontalRule. Text supports **bold**, *italic*, [link]
           text: JSON.stringify({ message: 'Rich-text translation saved', translation }, null, 2),
         }],
       };
+    },
+  );
+
+  server.tool(
+    'get_rich_text_segments',
+    `Get the text of a rich-text content key (e.g. a long CMS blog body) as numbered segments, one per paragraph or heading, so it can be translated without rebuilding the document. Formatting and links appear as tags <m1>…</m1> and inline elements (variables, line breaks) as placeholders <x1/>; keep them in the translation (they may move within the segment). Images, tables, lists and link targets are kept from the source automatically. Translate the segments and save them with set_rich_text_segments, passing the returned structure_key. With locale_id, segments already translated in that locale include translated_text (same tags), so a translation can be corrected by editing translated_text and sending back only the changed segments. Pass untranslated_only to resume a partial translation.`,
+    {
+      source_type: z.enum(['page', 'component', 'cms']).describe('Type of source'),
+      source_id: z.string().describe('Page ID, component ID, or collection item ID (for cms)'),
+      content_key: z.string().describe('Rich-text content key from list_translatable_content (e.g. "field:key:content")'),
+      locale_id: z.string().optional().describe('Include the current translation (translated_text) of each segment translated in this locale'),
+      untranslated_only: z.boolean().optional().describe('Requires locale_id. Only return segments not translated yet'),
+      offset: z.number().int().min(0).optional().describe('Skip this many segments (after filtering)'),
+      limit: z.number().int().min(1).max(MAX_SEGMENTS_LIMIT).optional().describe(`Max segments to return (default ${DEFAULT_SEGMENTS_LIMIT})`),
+    },
+    async ({ source_type, source_id, content_key, locale_id, untranslated_only, offset, limit }) => {
+      if (untranslated_only && !locale_id) return errorResult('untranslated_only requires locale_id.');
+
+      const source = await loadRichTextSourceDoc(source_type, source_id, content_key);
+      if ('error' in source) return errorResult(source.error);
+
+      const draft = locale_id ? await loadRichTextTranslationDoc(locale_id, source_type, source_id, content_key) : null;
+      let segments = getRichTextSegments(source.doc, draft);
+      const total = segments.length;
+      const translatedCount = segments.filter((s) => s.translated_text !== undefined).length;
+      const note = draft && getRichTextStructureKey(draft) !== getRichTextStructureKey(source.doc)
+        ? 'The existing translation was made from a different version of the source and cannot be matched to segments; saving segments starts from the source text.'
+        : undefined;
+      if (untranslated_only) segments = segments.filter((s) => s.translated_text === undefined);
+
+      const start = offset ?? 0;
+      const page = segments.slice(start, start + (limit ?? DEFAULT_SEGMENTS_LIMIT));
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            structure_key: getRichTextStructureKey(source.doc),
+            total_segments: total,
+            ...(locale_id ? { translated_segments: translatedCount } : {}),
+            matching_segments: segments.length,
+            offset: start,
+            has_more: start + page.length < segments.length,
+            ...(note ? { note } : {}),
+            segments: page,
+          }),
+        }],
+      };
+    },
+  );
+
+  server.tool(
+    'set_rich_text_segments',
+    `Save translated segments from get_rich_text_segments. The document is rebuilt from the source, so links, images and tables stay intact; only the segment text changes. Send the whole text in one call or in parts: segments not included keep their previous translation. Parts and locales can be sent in parallel. Every <mN> link tag and <xN/> placeholder of a segment must be kept; if any segment is invalid nothing is saved and the errors list the segment numbers.`,
+    {
+      locale_id: z.string().describe('The locale ID'),
+      source_type: z.enum(['page', 'component', 'cms']).describe('Type of source'),
+      source_id: z.string().describe('Page ID, component ID, or collection item ID (for cms)'),
+      content_key: z.string().describe('Rich-text content key'),
+      structure_key: z.string().describe('structure_key returned by get_rich_text_segments'),
+      segments: z.array(z.object({
+        i: z.number().int().describe('Segment number'),
+        text: z.string().describe('Translated text, keeping the <mN>…</mN> tags and <xN/> placeholders (from text or translated_text)'),
+      })).min(1).max(1000).describe('Translated segments (max 1000 per call)'),
+      is_completed: z.boolean().optional().describe('Defaults to true once every segment differs from the source. Pass true when finished if some segments intentionally stay unchanged (e.g. brand names). Incomplete translations are never shown on the live site.'),
+    },
+    async ({ locale_id, source_type, source_id, content_key, structure_key, segments, is_completed }) => {
+      const source = await loadRichTextSourceDoc(source_type, source_id, content_key);
+      if ('error' in source) return errorResult(source.error);
+      if (getRichTextStructureKey(source.doc) !== structure_key) {
+        return errorResult('The source content changed since get_rich_text_segments. Fetch the segments again and retranslate the changed ones.');
+      }
+
+      const total = getRichTextSegments(source.doc).length;
+
+      // Parts may be saved concurrently: re-read and re-merge until the draft
+      // wasn't changed by another call between reading and writing it.
+      for (let attempt = 0; attempt < MAX_SEGMENT_SAVE_ATTEMPTS; attempt++) {
+        const current = await getDraftTranslationVersion(locale_id, source_type, source_id, content_key);
+        const draft = current && !current.deleted_at ? parseTiptapDocOrNull(current.content_value) : null;
+        const result = applyRichTextSegments(source.doc, segments, draft);
+        if ('errors' in result) {
+          return errorResult(`${result.errors.length} segment(s) are invalid and nothing was saved. Fix and resend them:\n${result.errors.join('\n')}`);
+        }
+
+        const translated = getTranslatedSegmentIndexes(source.doc, result.doc)?.size ?? 0;
+        const completed = is_completed ?? translated === total;
+        const saved = await saveDraftTranslationIfUnchanged({
+          locale_id,
+          source_type,
+          source_id,
+          content_key,
+          content_type: 'richtext',
+          content_value: JSON.stringify(result.doc),
+          is_completed: completed,
+        }, current);
+
+        if (saved) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                message: `Saved ${segments.length} segment(s)`,
+                translated_segments: translated,
+                total_segments: total,
+                is_completed: completed,
+                ...(!completed ? {
+                  hint: `${total - translated} segment(s) are not translated yet (identical to the source), so the translation is saved as incomplete and hidden on the live site. Send the remaining segments, or pass is_completed: true if they intentionally stay unchanged.`,
+                } : {}),
+              }),
+            }],
+          };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50 + Math.random() * 150));
+      }
+
+      return errorResult('Other parts of this translation kept being saved at the same time. Nothing was saved; retry this call.');
     },
   );
 }
