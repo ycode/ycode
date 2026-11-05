@@ -777,6 +777,12 @@ Translating a lot of content efficiently (avoid token waste and many round-trips
 - Rich text in a batch: set content_type "richtext" with content_value as a JSON-stringified
   Tiptap doc. Use set_rich_text_translation (structured blocks) only for a single field.
   Plain text sent to a rich_text key will not render.
+- Long rich text (blog bodies, anything with links, images or tables): do NOT rebuild the doc.
+  Call get_rich_text_segments and send only the translated segment text with
+  set_rich_text_segments, in parts if needed. Links, images and tables are kept from the
+  source; keep every <mN>…</mN> tag and <xN/> placeholder in the translated text. To fix an
+  existing translation, pass locale_id, edit the returned translated_text and resend only the
+  changed segments.
 - Text bound to a global variable has a "richtext" source_value containing dynamicVariable
   nodes with source "global". Translate only the text nodes and copy those nodes unchanged into
   the translated doc, so the value stays shared across locales.

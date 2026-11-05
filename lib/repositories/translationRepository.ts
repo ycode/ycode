@@ -364,6 +364,95 @@ export async function getTranslationByKey(
   return data;
 }
 
+export type DraftTranslationVersion = Pick<Translation, 'id' | 'content_value' | 'updated_at' | 'deleted_at'>;
+
+/** Draft row of a translation key, including soft-deleted rows, for use with saveDraftTranslationIfUnchanged. */
+export async function getDraftTranslationVersion(
+  localeId: string,
+  sourceType: string,
+  sourceId: string,
+  contentKey: string,
+  tenantId?: string
+): Promise<DraftTranslationVersion | null> {
+  const client = await getSupabaseAdmin(tenantId);
+
+  if (!client) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { data, error } = await client
+    .from('translations')
+    .select('id, content_value, updated_at, deleted_at')
+    .eq('locale_id', localeId)
+    .eq('source_type', sourceType)
+    .eq('source_id', sourceId)
+    .eq('content_key', contentKey)
+    .eq('is_published', false)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to fetch translation: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
+ * Save a draft translation only if its row hasn't changed since `current` was
+ * read (null = no row existed). Returns false when another write got there first.
+ */
+export async function saveDraftTranslationIfUnchanged(
+  translationData: CreateTranslationData,
+  current: Pick<DraftTranslationVersion, 'id' | 'updated_at'> | null,
+  tenantId?: string
+): Promise<boolean> {
+  const client = await getSupabaseAdmin(tenantId);
+
+  if (!client) {
+    throw new Error('Supabase not configured');
+  }
+
+  const values = {
+    content_type: translationData.content_type,
+    content_value: translationData.content_value,
+    is_completed: translationData.is_completed ?? false,
+    deleted_at: null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (current) {
+    const { data, error } = await client
+      .from('translations')
+      .update(values)
+      .eq('id', current.id)
+      .eq('updated_at', current.updated_at)
+      .select('id');
+
+    if (error) {
+      throw new Error(`Failed to update translation: ${error.message}`);
+    }
+    return data.length > 0;
+  }
+
+  const { error } = await client
+    .from('translations')
+    .insert({
+      ...values,
+      locale_id: translationData.locale_id,
+      source_type: translationData.source_type,
+      source_id: translationData.source_id,
+      content_key: translationData.content_key,
+      is_published: false,
+    });
+
+  // Unique violation: another write created the row first
+  if (error?.code === '23505') return false;
+  if (error) {
+    throw new Error(`Failed to create translation: ${error.message}`);
+  }
+  return true;
+}
+
 /**
  * Create a new translation (draft by default)
  * Uses upsert to handle existing translations
