@@ -110,9 +110,10 @@ export async function GET() {
 
         if (items.length === 0) continue;
 
-        // Fetch values for these items (returns Record<itemId, Record<fieldId, value>>)
+        // Only the slug field is needed to build item URLs
+        // (returns Record<itemId, Record<fieldId, value>>)
         const itemIds = items.map(i => i.id);
-        const valuesByItem = await getValuesByItemIds(itemIds, true);
+        const valuesByItem = await getValuesByItemIds(itemIds, true, undefined, [slugFieldId]);
 
         // Build itemValues map: itemId -> fieldId -> value
         const itemValues = new Map<string, Map<string, string>>();
