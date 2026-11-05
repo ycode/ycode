@@ -3,7 +3,7 @@ import { escapeHtml } from '@/lib/escape-html';
 import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { getKnexClient } from '@/lib/knex-client';
 import { buildSlugPath, buildDynamicPageUrl, buildLocalizedDynamicPageUrl, detectLocaleFromPath, matchPageWithTranslatedSlugs, matchDynamicPageWithTranslatedSlugs } from '@/lib/page-utils';
-import { getItemWithValues, getItemsWithValues, getItemsWithValuesByIds, getItemIdsByFieldValue, getItemsByCollectionId, getSlugsByItemIds } from '@/lib/repositories/collectionItemRepository';
+import { getItemWithValues, getItemsWithValuesByIds, getItemIdsByFieldValue, getItemsByCollectionId, getSlugsByItemIds } from '@/lib/repositories/collectionItemRepository';
 import { getValuesByItemIds } from '@/lib/repositories/collectionItemValueRepository';
 import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepository';
 import { enrichItemsWithCountValues } from '@/lib/repositories/collectionCountRepository';
@@ -779,17 +779,27 @@ async function fetchPageByPathInternal(
             // system. We grab values too so we can build a slug map — the
             // neighbouring items are typically not referenced anywhere else
             // on the page, so PageRenderer would otherwise have no way to
-            // resolve their URLs.
+            // resolve their URLs. Only the sort field and the slug are read
+            // here, so only those values are fetched — loading every value of
+            // every item made each dynamic-page render scale with the whole
+            // collection's content size.
             let pageCollectionSortedItemIds: string[] | undefined;
             let pageCollectionSortedItemSlugs: Record<string, string> | undefined;
             try {
               const slugFieldId = collectionFields.find(f => f.key === 'slug')?.id;
-              const { items: fetchedItems } = await getItemsWithValues(
+              const idFieldId = collectionFields.find(f => f.key === 'id')?.id;
+              const nextPreviousSortBy = cmsSettings.next_previous?.sort_by || idFieldId || 'manual';
+              const neededFieldIds = [slugFieldId, nextPreviousSortBy === 'manual' ? undefined : nextPreviousSortBy]
+                .filter((id): id is string => !!id);
+              const { items: collectionItems } = await getItemsByCollectionId(
                 cmsSettings.collection_id,
                 isPublished
               );
+              const neededValues = neededFieldIds.length > 0 && collectionItems.length > 0
+                ? await getValuesByItemIds(collectionItems.map(i => i.id), isPublished, undefined, neededFieldIds)
+                : {};
               const orderedItems = sortItemsForNextPrevious(
-                fetchedItems,
+                collectionItems.map(item => ({ ...item, values: neededValues[item.id] || {} })),
                 collectionFields,
                 cmsSettings.next_previous
               );
@@ -1295,6 +1305,8 @@ async function batchResolveReferenceFields(
   let refFieldsMap: Map<string, CollectionField[]>;
 
   if (dataCache) {
+    // Referenced items are cached without values until something renders them.
+    await dataCache.hydrate(allRefItemIds);
     refItemsMap = {};
     for (const itemId of allRefItemIds) {
       const found = dataCache.itemsById.get(itemId);
@@ -1983,6 +1995,44 @@ interface CollectionDataCache {
   fieldsByCollection: Map<string, CollectionField[]>;
   fieldTypeMap: Record<string, string>;
   itemsById: Map<string, CollectionItemWithValues>;
+  /**
+   * Load the bound field values for the given items (no-op for items that are
+   * already hydrated). Cached items start with only the values needed to
+   * filter/sort them; the full bound values are fetched here, for the items
+   * that actually render, so a "latest 4 posts" widget no longer pulls every
+   * value of every item in the collection.
+   */
+  hydrate: (itemIds: Iterable<string>) => Promise<void>;
+}
+
+/**
+ * Collect, per collection, the field IDs whose values must be present on
+ * EVERY item before a collection layer can decide which items to render:
+ * sort fields, static filter conditions and the back-reference field of
+ * inverse-reference lists. Everything else is loaded only for the rendered
+ * items (see CollectionDataCache.hydrate).
+ */
+function collectDecisionFieldIds(layers: Layer[]): Set<string> {
+  const ids = new Set<string>();
+  const scan = (layer: Layer) => {
+    const col = layer.variables?.collection;
+    if (col?.id) {
+      if (col.sort_by && col.sort_by !== 'none' && col.sort_by !== 'manual' && col.sort_by !== 'random') {
+        ids.add(col.sort_by);
+      }
+      for (const group of col.filters?.groups || []) {
+        for (const condition of group.conditions) {
+          if (condition.fieldId) ids.add(condition.fieldId);
+        }
+      }
+      if (col.source_field_type === 'inverse_reference' && col.source_field_id) {
+        ids.add(col.source_field_id);
+      }
+    }
+    if (layer.children) layer.children.forEach(scan);
+  };
+  layers.forEach(scan);
+  return ids;
 }
 
 /**
@@ -2213,10 +2263,12 @@ async function buildCollectionCache(
   boundFieldIds?: Set<string>,
   boundFieldPaths?: Set<string>,
   boundCollectionIds?: Set<string>,
+  decisionFieldIds?: Set<string>,
 ): Promise<CollectionDataCache> {
   const empty: CollectionDataCache = {
     itemsByCollection: new Map(), totalByCollection: new Map(),
     fieldsByCollection: new Map(), fieldTypeMap: {}, itemsById: new Map(),
+    hydrate: async () => {},
   };
   if (collectionIds.size === 0) return empty;
 
@@ -2403,16 +2455,22 @@ async function buildCollectionCache(
     refFieldFilter = Array.from(merged);
   }
 
-  // Fetch values: filtered for bound collections, unfiltered for optionsSource/other collections
+  // Fetch values up front only where every item needs them:
+  //  - bound collections: just the decision fields (sort / static filter /
+  //    inverse-reference source) so the layer can pick its items. The rest of
+  //    the bound values are hydrated later for the rendered items only — this
+  //    is what keeps a 4-item widget on a 1,000+ item collection cheap.
+  //  - optionsSource / other collections: every item renders (select options,
+  //    checkbox groups), so load all values as before.
+  //  - referenced collections: nothing up front; hydrated when a rendered item
+  //    actually points at them.
   const valueFetches: Promise<Record<string, Record<string, any>>>[] = [];
-  if (boundPrimaryItemIds.length > 0) {
-    valueFetches.push(getValuesByItemIds(boundPrimaryItemIds, isPublished, fieldTypeMap, primaryFieldFilter));
+  const decisionFilter = decisionFieldIds && decisionFieldIds.size > 0 ? Array.from(decisionFieldIds) : undefined;
+  if (boundPrimaryItemIds.length > 0 && decisionFilter) {
+    valueFetches.push(getValuesByItemIds(boundPrimaryItemIds, isPublished, fieldTypeMap, decisionFilter));
   }
   if (unboundPrimaryItemIds.length > 0) {
     valueFetches.push(getValuesByItemIds(unboundPrimaryItemIds, isPublished, fieldTypeMap));
-  }
-  if (refItemIds.length > 0) {
-    valueFetches.push(getValuesByItemIds(refItemIds, isPublished, fieldTypeMap, refFieldFilter));
   }
   const valuesByItem: Record<string, Record<string, any>> = {};
   if (valueFetches.length > 0) {
@@ -2442,7 +2500,59 @@ async function buildCollectionCache(
     if (!fieldsByCollection.has(id)) fieldsByCollection.set(id, []);
   }
 
-  return { itemsByCollection, totalByCollection, fieldsByCollection, fieldTypeMap, itemsById };
+  // Deferred value loading. Each item is fetched with the same field filter the
+  // eager path used to apply to its class (bound primary / referenced), so the
+  // values a rendered item ends up with are unchanged — only the timing moved.
+  // Unbound items already carry every value.
+  const hydrated = new Set<string>(unboundPrimaryItemIds);
+  const inFlight = new Map<string, Promise<void>>();
+  const refItemIdSet = new Set(refItemIds);
+
+  const hydrate = async (itemIds: Iterable<string>): Promise<void> => {
+    const primaryToLoad: string[] = [];
+    const refToLoad: string[] = [];
+    const waits: Promise<void>[] = [];
+    for (const id of itemIds) {
+      if (hydrated.has(id) || !itemsById.has(id)) continue;
+      const pending = inFlight.get(id);
+      if (pending) { waits.push(pending); continue; }
+      if (refItemIdSet.has(id)) refToLoad.push(id); else primaryToLoad.push(id);
+    }
+
+    const load = async (ids: string[], fieldFilter: string[] | undefined) => {
+      if (ids.length === 0) return;
+      const promise = (async () => {
+        try {
+          const values = await getValuesByItemIds(ids, isPublished, fieldTypeMap, fieldFilter);
+          for (const id of ids) {
+            const item = itemsById.get(id);
+            if (item) {
+              // Keys already present win: decision fields hold the same stored
+              // value, and count fields were computed by enrichItemsWithCountValues
+              // and must not be replaced by the (empty) stored row.
+              const loaded = values[id] || {};
+              for (const fieldId of Object.keys(loaded)) {
+                if (!(fieldId in item.values)) item.values[fieldId] = loaded[fieldId];
+              }
+            }
+            hydrated.add(id);
+          }
+        } finally {
+          for (const id of ids) inFlight.delete(id);
+        }
+      })();
+      for (const id of ids) inFlight.set(id, promise);
+      waits.push(promise);
+    };
+
+    await Promise.all([
+      load(primaryToLoad, primaryFieldFilter),
+      load(refToLoad, refFieldFilter),
+    ]);
+    await Promise.all(waits);
+  };
+
+  return { itemsByCollection, totalByCollection, fieldsByCollection, fieldTypeMap, itemsById, hydrate };
 }
 
 /** Return a shallow copy of `layer` without its `children`. */
@@ -2538,6 +2648,7 @@ export async function resolveCollectionLayers(
     mergedBoundFieldIds.size > 0 ? mergedBoundFieldIds : undefined,
     mergedBoundFieldPaths.size > 0 ? mergedBoundFieldPaths : undefined,
     scannedCollectionIds.size > 0 ? scannedCollectionIds : undefined,
+    collectDecisionFieldIds(layers),
   );
 
   // Inject computed count field values into the cached items so layers bound
@@ -2903,8 +3014,14 @@ export async function resolveCollectionLayers(
           // Find slug field for building collection item URLs
           const slugField = collectionFields.find(f => f.key === 'slug');
 
-          // Pre-process all items: translations + date formatting (pure computation)
-          await ensureCmsTranslations(translations, sortedItems.map(item => item.id));
+          // Only the items that made it onto this page need their full bound
+          // values; load them now (cache hit for anything already hydrated).
+          const sortedItemIds = sortedItems.map(item => item.id);
+          await Promise.all([
+            cache.hydrate(sortedItemIds),
+            // Pre-process all items: translations + date formatting (pure computation)
+            ensureCmsTranslations(translations, sortedItemIds),
+          ]);
           const preprocessed = sortedItems.map(item => {
             let translatedValues = applyCmsTranslations(item.id, item.values, collectionFields, translations, { includeIncomplete: !isPublished });
             const rawTranslatedValues = { ...translatedValues };
@@ -3100,6 +3217,9 @@ export async function resolveCollectionLayers(
         let sourceItems = [...(cache.itemsByCollection.get(sourceCollectionId) || [])];
         const sourceFields = cache.fieldsByCollection.get(sourceCollectionId) || [];
         const opts = layer.settings.optionsSource;
+        // Every option renders, so make sure the items carry their values even
+        // when the same collection is also bound to a collection layer.
+        await cache.hydrate(sourceItems.map(item => item.id));
 
         const displayField = findDisplayField(sourceFields);
 
@@ -3272,7 +3392,8 @@ export async function resolveCollectionLayers(
           const sourceCollectionId = layer.settings.optionsSource.collectionId;
           const items = cache.itemsByCollection.get(sourceCollectionId) || [];
           const fields = cache.fieldsByCollection.get(sourceCollectionId) || [];
-          await ensureCmsTranslations(translations, items.map(item => item.id));
+          const itemIds = items.map(item => item.id);
+          await Promise.all([cache.hydrate(itemIds), ensureCmsTranslations(translations, itemIds)]);
           return buildInputGroupFragment(inputType, items, fields);
         } catch (error) {
           console.error(`Failed to resolve collection-sourced ${inputType} options for layer ${layer.id}:`, error);
