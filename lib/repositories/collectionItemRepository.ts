@@ -771,24 +771,55 @@ export async function getSlugsByItemIds(
 ): Promise<Record<string, string>> {
   if (ids.length === 0) return {};
 
-  const itemsByIds = await getItemsWithValuesByIds(ids, is_published);
-  const itemList = Object.values(itemsByIds);
-  if (itemList.length === 0) return {};
+  const items = await getItemsByIds(ids, is_published);
+  if (items.length === 0) return {};
 
-  const refCollectionIds = Array.from(new Set(itemList.map(i => i.collection_id)));
-  const fieldsByCollection = new Map<string, CollectionField[]>();
+  return getSlugsForItems(items, is_published);
+}
+
+/**
+ * Fetch the slug of every item in a collection, keyed by item ID. Only the
+ * slug field's values are read, so the cost does not grow with the
+ * collection's other content.
+ */
+export async function getSlugsByCollectionId(
+  collection_id: string,
+  is_published: boolean = false
+): Promise<Record<string, string>> {
+  const { items } = await getItemsByCollectionId(collection_id, is_published);
+  if (items.length === 0) return {};
+
+  return getSlugsForItems(items, is_published);
+}
+
+/**
+ * Resolve the slug field of each item's collection and read just those
+ * values. Items whose collection has no slug field, or whose slug is empty,
+ * are omitted.
+ */
+async function getSlugsForItems(
+  items: CollectionItem[],
+  is_published: boolean
+): Promise<Record<string, string>> {
+  const collectionIds = Array.from(new Set(items.map(i => i.collection_id)));
+  const slugFieldByCollection = new Map<string, string>();
   await Promise.all(
-    refCollectionIds.map(async (collId) => {
+    collectionIds.map(async (collId) => {
       const fields = await getFieldsByCollectionId(collId, is_published);
-      fieldsByCollection.set(collId, fields);
+      const slugField = fields.find(f => f.key === 'slug');
+      if (slugField) slugFieldByCollection.set(collId, slugField.id);
     })
   );
 
+  const slugFieldIds = Array.from(new Set(slugFieldByCollection.values()));
+  if (slugFieldIds.length === 0) return {};
+
+  const valuesByItem = await getValuesByItemIds(items.map(i => i.id), is_published, undefined, slugFieldIds);
+
   const slugs: Record<string, string> = {};
-  for (const item of itemList) {
-    const fields = fieldsByCollection.get(item.collection_id);
-    const slugField = fields?.find(f => f.key === 'slug');
-    const slugValue = slugField ? item.values[slugField.id] : undefined;
+  for (const item of items) {
+    const slugFieldId = slugFieldByCollection.get(item.collection_id);
+    const slugValue = slugFieldId ? valuesByItem[item.id]?.[slugFieldId] : undefined;
     if (slugValue) {
       slugs[item.id] = slugValue;
     }

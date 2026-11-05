@@ -20,9 +20,8 @@ import { getMapboxAccessToken, getGoogleMapsEmbedApiKey } from '@/lib/map-server
 import { getAllColorVariables } from '@/lib/repositories/colorVariableRepository';
 import { getAllGlobalVariables } from '@/lib/repositories/globalVariableRepository';
 import { getSettingByKey } from '@/lib/repositories/settingsRepository';
-import { getItemsWithValues, getItemsWithValuesByIds } from '@/lib/repositories/collectionItemRepository';
+import { getSlugsByCollectionId, getSlugsByItemIds } from '@/lib/repositories/collectionItemRepository';
 import { getValuesByItemIds } from '@/lib/repositories/collectionItemValueRepository';
-import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepository';
 import { REF_PAGE_PREFIX, REF_COLLECTION_PREFIX, isCollectionItemKeyword, parseCollectionLinkValue, type ResolvedAsset } from '@/lib/link-utils';
 import { getClassesString, hasPasswordFormLayer } from '@/lib/layer-utils';
 import { buildGlobalsMetaMap, buildGlobalsValueMap } from '@/lib/collection-field-utils';
@@ -447,11 +446,8 @@ export default async function PageRenderer({
   let folders: PageFolder[] = [];
 
   try {
-    // Start pages/folders fetch and referenced-item fetch in parallel
-    const itemsMapPromise = referencedItemIds.size > 0
-      ? getItemsWithValuesByIds(Array.from(referencedItemIds), usePublishedData)
-      : Promise.resolve({} as Record<string, import('@/types').CollectionItemWithValues>);
-
+    // Start pages/folders fetch and referenced-item slug fetch in parallel.
+    // Only the slug is needed to build the link URL.
     [[pages, folders]] = await Promise.all([
       usePublishedData
         ? Promise.all([getCachedPublishedPages(), getCachedPublishedFolders()])
@@ -459,23 +455,8 @@ export default async function PageRenderer({
           getAllPages({ is_published: false }),
           getAllPageFolders({ is_published: false }),
         ]),
-      itemsMapPromise.then(async (itemsMap) => {
-        const collectionIds = new Set(Object.values(itemsMap).map(i => i.collection_id));
-        const fieldsByCollection = new Map<string, CollectionField[]>();
-        await Promise.all(
-          Array.from(collectionIds).map(async (collId) => {
-            const fields = await getFieldsByCollectionId(collId, usePublishedData);
-            fieldsByCollection.set(collId, fields);
-          })
-        );
-
-        for (const item of Object.values(itemsMap)) {
-          const fields = fieldsByCollection.get(item.collection_id);
-          const slugField = fields?.find(f => f.key === 'slug');
-          if (slugField && item.values[slugField.id]) {
-            collectionItemSlugs[item.id] = item.values[slugField.id];
-          }
-        }
+      getSlugsByItemIds(Array.from(referencedItemIds), usePublishedData).then((slugs) => {
+        Object.assign(collectionItemSlugs, slugs);
       }),
     ]);
 
@@ -489,17 +470,8 @@ export default async function PageRenderer({
     if (refTargetCollectionIds.size > 0) {
       await Promise.all(
         Array.from(refTargetCollectionIds).map(async (collId) => {
-          const [fields, { items }] = await Promise.all([
-            getFieldsByCollectionId(collId, usePublishedData),
-            getItemsWithValues(collId, usePublishedData),
-          ]);
-          const slugField = fields.find(f => f.key === 'slug');
-          if (!slugField) return;
-          for (const item of items) {
-            if (item.values[slugField.id]) {
-              collectionItemSlugs[item.id] = item.values[slugField.id];
-            }
-          }
+          const slugs = await getSlugsByCollectionId(collId, usePublishedData);
+          Object.assign(collectionItemSlugs, slugs);
         })
       );
     }

@@ -129,6 +129,53 @@ export interface UpdateCollectionItemValueData {
 }
 
 /**
+ * Set once the database reports that `get_collection_item_values` does not
+ * exist (migration not run yet), so later calls skip the wasted round-trip
+ * and go straight to the direct-DB path. Reset on process restart.
+ */
+let itemValuesRpcUnavailable = false;
+
+/**
+ * Read item values through the `get_collection_item_values` SQL function.
+ * Returns null when the RPC cannot be used (function missing, PostgREST
+ * error), so the caller can fall back to the direct-DB path.
+ */
+async function fetchValueRowsViaRpc(
+  client: NonNullable<Awaited<ReturnType<typeof getSupabaseAdmin>>>,
+  itemIds: string[],
+  isPublished: boolean,
+  fieldIds?: string[],
+): Promise<Array<{ item_id: string; field_id: string; value: string | null }> | null> {
+  if (itemValuesRpcUnavailable) return null;
+
+  const { data, error } = await client.rpc('get_collection_item_values', {
+    p_item_ids: itemIds,
+    p_is_published: isPublished,
+    p_field_ids: fieldIds ?? null,
+  });
+
+  if (error) {
+    // PGRST202: function not found in the schema cache; 42883: undefined function
+    if (error.code === 'PGRST202' || error.code === '42883') {
+      itemValuesRpcUnavailable = true;
+    } else {
+      console.warn('[getValuesByItemIds] RPC failed, falling back to direct query:', error.message);
+    }
+    return null;
+  }
+
+  const rows: Array<{ item_id: string; field_id: string; value: string | null }> = [];
+  const byItem = (data ?? {}) as Record<string, Record<string, string | null>>;
+  for (const itemId of Object.keys(byItem)) {
+    const fields = byItem[itemId];
+    for (const fieldId of Object.keys(fields)) {
+      rows.push({ item_id: itemId, field_id: fieldId, value: fields[fieldId] });
+    }
+  }
+  return rows;
+}
+
+/**
  * Get all values for multiple items in one query (batch operation)
  * @param item_ids - Array of item UUIDs
  * @param is_published - Filter for draft (false) or published (true) values. Defaults to false (draft).
@@ -158,53 +205,62 @@ export async function getValuesByItemIds(
   }
 
   const valuesByItem: Record<string, Record<string, any>> = {};
-  let allRows: Array<{ item_id: string; field_id: string; value: string }> = [];
+  let allRows: Array<{ item_id: string; field_id: string; value: string | null }> = [];
 
-  // Fresh path: prefer direct DB query (Knex) for large EAV reads.
-  // This avoids PostgREST overhead and URL-size chunking behavior.
-  try {
-    const knex = await getKnexClient();
-    let query = knex('collection_item_values')
-      .select('item_id', 'field_id', 'value')
-      .whereIn('item_id', safeItemIds)
-      .andWhere('is_published', is_published)
-      .whereNull('deleted_at');
-    if (safeFieldIds) {
-      query = query.whereIn('field_id', safeFieldIds);
-    }
-    allRows = await query;
-  } catch {
-    // Fallback: Supabase chunked reads
-    const CHUNK_SIZE = 50;
-    const chunks: string[][] = [];
-    for (let i = 0; i < safeItemIds.length; i += CHUNK_SIZE) {
-      chunks.push(safeItemIds.slice(i, i + CHUNK_SIZE));
-    }
+  // Preferred path: one RPC returning `{ item_id: { field_id: value } }`.
+  // PostgREST gzips the response (~7x smaller than the uncompressed Postgres
+  // wire protocol the Knex path uses), a scalar return has no row cap, and
+  // the ids travel in the POST body so there is no URL-length chunking.
+  const rpcRows = await fetchValueRowsViaRpc(client, safeItemIds, is_published, safeFieldIds);
+  if (rpcRows) {
+    allRows = rpcRows;
+  } else {
+    // Direct DB query (Knex) for large EAV reads when the function is not
+    // installed yet. Avoids PostgREST overhead and URL-size chunking.
+    try {
+      const knex = await getKnexClient();
+      let query = knex('collection_item_values')
+        .select('item_id', 'field_id', 'value')
+        .whereIn('item_id', safeItemIds)
+        .andWhere('is_published', is_published)
+        .whereNull('deleted_at');
+      if (safeFieldIds) {
+        query = query.whereIn('field_id', safeFieldIds);
+      }
+      allRows = await query;
+    } catch {
+      // Fallback: Supabase chunked reads
+      const CHUNK_SIZE = 50;
+      const chunks: string[][] = [];
+      for (let i = 0; i < safeItemIds.length; i += CHUNK_SIZE) {
+        chunks.push(safeItemIds.slice(i, i + CHUNK_SIZE));
+      }
 
-    const chunkResults = await Promise.all(
-      chunks.map(async (chunk) => {
-        let q = client
-          .from('collection_item_values')
-          .select('item_id, field_id, value')
-          .in('item_id', chunk)
-          .eq('is_published', is_published)
-          .is('deleted_at', null);
-        if (safeFieldIds) {
-          q = q.in('field_id', safeFieldIds);
+      const chunkResults = await Promise.all(
+        chunks.map(async (chunk) => {
+          let q = client
+            .from('collection_item_values')
+            .select('item_id, field_id, value')
+            .in('item_id', chunk)
+            .eq('is_published', is_published)
+            .is('deleted_at', null);
+          if (safeFieldIds) {
+            q = q.in('field_id', safeFieldIds);
+          }
+          const { data, error } = await q.limit(5000);
+
+          if (error) {
+            throw new Error(`Failed to fetch item values: ${error.message}`);
+          }
+
+          return data || [];
+        })
+      );
+
+      for (const rows of chunkResults) {
+        for (const row of rows) {
+          allRows.push(row);
         }
-        const { data, error } = await q.limit(5000);
-
-        if (error) {
-          throw new Error(`Failed to fetch item values: ${error.message}`);
-        }
-
-        return data || [];
-      })
-    );
-
-    for (const rows of chunkResults) {
-      for (const row of rows) {
-        allRows.push(row);
       }
     }
   }
