@@ -186,6 +186,8 @@ export const TOOL_META: Record<string, ToolMeta> = {
   delete_translation: destructive('Delete translation'),
   list_translatable_content: read('List translatable content'),
   set_rich_text_translation: write('Set rich text translation'),
+  get_rich_text_segments: read('Get rich text segments'),
+  set_rich_text_segments: write('Set rich text segments'),
 
   // Forms
   list_forms: read('List forms'),

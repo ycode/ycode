@@ -46,6 +46,17 @@ export function parseRichTextDoc(value: unknown): JSONContent {
   return { type: 'doc', content: [{ type: 'paragraph' }] };
 }
 
+/** Parse a stringified Tiptap doc, or null when the value isn't one (e.g. plain text or legacy HTML). */
+export function parseTiptapDocOrNull(value: string | null | undefined): JSONContent | null {
+  if (!value?.trim().startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return isTiptapDoc(parsed) ? normalizeLegacyTiptapDoc(parsed) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Text blocks that carry nothing when they have no children (an emptied editor keeps the block type). */
 const EMPTYABLE_TEXT_BLOCKS = new Set(['paragraph', 'heading']);
 
