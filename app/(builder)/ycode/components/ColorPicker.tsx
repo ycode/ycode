@@ -697,6 +697,10 @@ interface GradientBarProps {
   onStopSelect: (stopId: string | null) => void;
   onStopMove: (stopId: string, position: number) => void;
   onAddStop: (position?: number) => void;
+  /** Removes the selected stop; button is disabled when only 2 stops remain */
+  onRemoveStop: (stopId: string) => void;
+  /** Rotates the gradient angle; rotate button is hidden when omitted */
+  onRotate?: () => void;
   gradientType: 'linear' | 'radial';
   angle?: number;
   resolveColor?: (color: string) => string;
@@ -708,6 +712,8 @@ function GradientBar({
   onStopSelect,
   onStopMove,
   onAddStop,
+  onRemoveStop,
+  onRotate,
   gradientType,
   angle = 0,
   resolveColor,
@@ -722,6 +728,8 @@ function GradientBar({
   const handleMouseDown = (e: React.MouseEvent, stopId: string) => {
     e.preventDefault();
     e.stopPropagation();
+    // preventDefault keeps focus in the hex input, where Delete would edit text instead of removing the stop
+    barRef.current?.focus();
     setDraggingStopId(stopId);
     onStopSelect(stopId);
   };
@@ -785,11 +793,28 @@ function GradientBar({
     onAddStop(position);
   };
 
+  const canRemoveStop = !!selectedStopId && stops.length > 2;
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex items-center gap-2 -my-1.5">
+      {onRotate && (
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={onRotate}
+          title={`Rotate angle (${angle}°)`}
+          aria-label="Rotate angle"
+        >
+          <Icon
+            name="arrow-up"
+            style={{ transform: `rotate(${angle}deg)` }}
+          />
+        </Button>
+      )}
       <div
         ref={barRef}
-        className="relative h-3 w-full rounded-full outline outline-white/10 -outline-offset-1 cursor-pointer"
+        tabIndex={-1}
+        className="relative h-3 flex-1 min-w-0 rounded-full outline outline-white/10 -outline-offset-1 cursor-pointer"
         style={{ background: gradientCSS }}
         onClick={handleBarClick}
       >
@@ -836,6 +861,16 @@ function GradientBar({
           );
         })}
       </div>
+      <Button
+        variant="ghost"
+        size="xs"
+        disabled={!canRemoveStop}
+        onClick={() => selectedStopId && onRemoveStop(selectedStopId)}
+        title={canRemoveStop ? 'Remove stop' : 'A gradient needs at least 2 stops'}
+        aria-label="Remove stop"
+      >
+        <Icon name="trash" />
+      </Button>
     </div>
   );
 }
@@ -2163,34 +2198,24 @@ export default function ColorPicker({
           <TabsContent value="linear" className="gap-3">
             <div className="flex flex-col gap-3">
               {/* Gradient Bar with Draggable Handles */}
-              <div className="flex items-center gap-2 -my-1.5">
-                <div className="flex-1">
-                  <GradientBar
-                    stops={linearStops}
-                    selectedStopId={selectedStopId}
-                    onStopSelect={setSelectedStopId}
-                    onStopMove={(stopId, position) => {
-                      updateColorStop('linear', stopId, { position });
-                    }}
-                    onAddStop={(position) => addColorStop('linear', position)}
-                    gradientType="linear"
-                    angle={linearAngle}
-                    resolveColor={resolveStopColor}
-                  />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => {
-                    const newAngle = (linearAngle + 90) % 360;
-                    setLinearAngle(newAngle);
-                    handleLinearGradientChange(newAngle, linearStops);
-                  }}
-                  title={`Rotate angle (${linearAngle}°)`}
-                >
-                  <Icon name="refresh" />
-                </Button>
-              </div>
+              <GradientBar
+                stops={linearStops}
+                selectedStopId={selectedStopId}
+                onStopSelect={setSelectedStopId}
+                onStopMove={(stopId, position) => {
+                  updateColorStop('linear', stopId, { position });
+                }}
+                onAddStop={(position) => addColorStop('linear', position)}
+                onRemoveStop={(stopId) => removeColorStop('linear', stopId)}
+                onRotate={() => {
+                  const newAngle = (linearAngle + 45) % 360;
+                  setLinearAngle(newAngle);
+                  handleLinearGradientChange(newAngle, linearStops);
+                }}
+                gradientType="linear"
+                angle={linearAngle}
+                resolveColor={resolveStopColor}
+              />
 
               {/* Color Picker for Selected Stop */}
               {selectedStopId && (() => {
@@ -2307,6 +2332,7 @@ export default function ColorPicker({
                   updateColorStop('radial', stopId, { position });
                 }}
                 onAddStop={(position) => addColorStop('radial', position)}
+                onRemoveStop={(stopId) => removeColorStop('radial', stopId)}
                 gradientType="radial"
                 resolveColor={resolveStopColor}
               />
