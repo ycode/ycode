@@ -46,10 +46,17 @@ export default function ApiPage() {
   const [generatedKey, setGeneratedKey] = useState<ApiKey | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [baseUrl, setBaseUrl] = useState('');
+  const [baseUrlCopied, setBaseUrlCopied] = useState(false);
 
   // Fetch API keys on mount
   useEffect(() => {
     fetchApiKeys();
+  }, []);
+
+  // Read the origin after mount so the server render doesn't mismatch
+  useEffect(() => {
+    setBaseUrl(`${window.location.origin}/ycode/api/v1`);
   }, []);
 
   const fetchApiKeys = async () => {
@@ -109,11 +116,14 @@ export default function ApiPage() {
     }
   };
 
-  const copyToClipboard = async (text: string) => {
+  const copyToClipboard = async (
+    text: string,
+    setIsCopied: (value: boolean) => void = setCopied
+  ) => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
     } catch (error) {
       console.error('Failed to copy:', error);
     }
@@ -210,6 +220,28 @@ export default function ApiPage() {
 
         <div className="flex flex-col gap-8 bg-secondary/20 p-8 rounded-lg text-sm">
 
+          {/* Base URL */}
+          <section>
+            <h3 className="font-medium mb-2">Base URL</h3>
+            <p className="text-muted-foreground mb-3">
+              Send requests to your site&apos;s domain. All endpoint paths below are relative to this URL. Each API key only works on the site it was created for.
+            </p>
+            <div className="flex items-center gap-2 bg-secondary p-3 rounded-lg">
+              <code className="flex-1 text-xs font-mono break-all">
+                {baseUrl || '/ycode/api/v1'}
+              </code>
+              <Button
+                variant="secondary"
+                size="xs"
+                disabled={!baseUrl}
+                onClick={() => copyToClipboard(baseUrl, setBaseUrlCopied)}
+              >
+                <Icon name={baseUrlCopied ? 'check' : 'copy'} />
+                {baseUrlCopied ? 'Copied' : 'Copy'}
+              </Button>
+            </div>
+          </section>
+
           {/* Authentication */}
           <section>
             <h3 className="font-medium mb-2">Authentication</h3>
@@ -229,38 +261,38 @@ export default function ApiPage() {
               <div>
                 <h4 className="text-muted-foreground mb-1">Collections</h4>
                 <div className="bg-secondary p-3 rounded-lg space-y-1 text-xs font-mono">
-                  <div><span className="text-green-500">GET</span> /api/v1/collections</div>
-                  <div><span className="text-green-500">GET</span> /api/v1/collections/{'{collection_id}'}</div>
+                  <div><span className="text-green-500">GET</span> /collections</div>
+                  <div><span className="text-green-500">GET</span> /collections/{'{collection_id}'}</div>
                 </div>
               </div>
 
               <div>
                 <h4 className="text-muted-foreground mb-1">Collection Items</h4>
                 <div className="bg-secondary p-3 rounded-lg space-y-1 text-xs font-mono">
-                  <div><span className="text-green-500">GET</span> /api/v1/collections/{'{collection_id}'}/items</div>
-                  <div><span className="text-blue-500">POST</span> /api/v1/collections/{'{collection_id}'}/items</div>
-                  <div><span className="text-green-500">GET</span> /api/v1/collections/{'{collection_id}'}/items/{'{item_id}'}</div>
-                  <div><span className="text-yellow-500">PUT</span> /api/v1/collections/{'{collection_id}'}/items/{'{item_id}'}</div>
-                  <div><span className="text-yellow-500">PATCH</span> /api/v1/collections/{'{collection_id}'}/items/{'{item_id}'}</div>
-                  <div><span className="text-red-500">DELETE</span> /api/v1/collections/{'{collection_id}'}/items/{'{item_id}'}</div>
+                  <div><span className="text-green-500">GET</span> /collections/{'{collection_id}'}/items</div>
+                  <div><span className="text-blue-500">POST</span> /collections/{'{collection_id}'}/items</div>
+                  <div><span className="text-green-500">GET</span> /collections/{'{collection_id}'}/items/{'{item_id}'}</div>
+                  <div><span className="text-yellow-500">PUT</span> /collections/{'{collection_id}'}/items/{'{item_id}'}</div>
+                  <div><span className="text-yellow-500">PATCH</span> /collections/{'{collection_id}'}/items/{'{item_id}'}</div>
+                  <div><span className="text-red-500">DELETE</span> /collections/{'{collection_id}'}/items/{'{item_id}'}</div>
                 </div>
               </div>
 
               <div>
                 <h4 className="text-muted-foreground mb-1">Forms</h4>
                 <div className="bg-secondary p-3 rounded-lg space-y-1 text-xs font-mono">
-                  <div><span className="text-green-500">GET</span> /api/v1/forms</div>
-                  <div><span className="text-green-500">GET</span> /api/v1/forms/{'{form_id}'}</div>
+                  <div><span className="text-green-500">GET</span> /forms</div>
+                  <div><span className="text-green-500">GET</span> /forms/{'{form_id}'}</div>
                 </div>
               </div>
 
               <div>
                 <h4 className="text-muted-foreground mb-1">Form Submissions</h4>
                 <div className="bg-secondary p-3 rounded-lg space-y-1 text-xs font-mono">
-                  <div><span className="text-green-500">GET</span> /api/v1/forms/{'{form_id}'}/submissions</div>
-                  <div><span className="text-blue-500">POST</span> /api/v1/forms/{'{form_id}'}/submissions</div>
-                  <div><span className="text-yellow-500">PATCH</span> /api/v1/forms/{'{form_id}'}/submissions/{'{submission_id}'}</div>
-                  <div><span className="text-red-500">DELETE</span> /api/v1/forms/{'{form_id}'}/submissions/{'{submission_id}'}</div>
+                  <div><span className="text-green-500">GET</span> /forms/{'{form_id}'}/submissions</div>
+                  <div><span className="text-blue-500">POST</span> /forms/{'{form_id}'}/submissions</div>
+                  <div><span className="text-yellow-500">PATCH</span> /forms/{'{form_id}'}/submissions/{'{submission_id}'}</div>
+                  <div><span className="text-red-500">DELETE</span> /forms/{'{form_id}'}/submissions/{'{submission_id}'}</div>
                 </div>
               </div>
 
@@ -281,23 +313,23 @@ export default function ApiPage() {
                   Supports pagination with <code className="bg-secondary px-1 py-0.5 rounded">page</code> and <code className="bg-secondary px-1 py-0.5 rounded">per_page</code> (max 100).
                 </p>
                 <pre className="bg-secondary p-3 rounded-lg text-xs overflow-x-auto">
-{`GET /api/v1/collections/{collection_id}/items?page=1&per_page=50`}
+{`GET /collections/{collection_id}/items?page=1&per_page=50`}
                 </pre>
               </div>
 
               <div>
                 <div className="font-medium text-xs mb-2">Create Item</div>
                 <p className="text-muted-foreground text-xs mb-2">
-                  Pass field values using <strong>field names</strong> as keys. For reference fields, pass the referenced item&apos;s <code className="bg-secondary px-1 py-0.5 rounded">_id</code> (UUID).
+                  Pass field values using each field&apos;s <code className="bg-secondary px-1 py-0.5 rounded">slug</code> (from <code className="bg-secondary px-1 py-0.5 rounded">GET /collections/{'{collection_id}'}</code>) as keys. Keys that don&apos;t match a field are ignored. For reference fields, pass the referenced item&apos;s <code className="bg-secondary px-1 py-0.5 rounded">_id</code> (UUID).
                 </p>
                 <pre className="bg-secondary p-3 rounded-lg text-xs overflow-x-auto">
-{`POST /api/v1/collections/{collection_id}/items
+{`POST /collections/{collection_id}/items
 Content-Type: application/json
 
 {
-  "Name": "My Blog Post",
-  "Slug": "my-blog-post",
-  "Author": "550e8400-e29b-41d4-a716-446655440000"
+  "name": "My Blog Post",
+  "slug": "my-blog-post",
+  "author": "550e8400-e29b-41d4-a716-446655440000"
 }`}
                 </pre>
               </div>
@@ -308,11 +340,11 @@ Content-Type: application/json
                   Use <code className="bg-secondary px-1 py-0.5 rounded">PUT</code> for full replacement or <code className="bg-secondary px-1 py-0.5 rounded">PATCH</code> for partial updates.
                 </p>
                 <pre className="bg-secondary p-3 rounded-lg text-xs overflow-x-auto">
-{`PATCH /api/v1/collections/{collection_id}/items/{item_id}
+{`PATCH /collections/{collection_id}/items/{item_id}
 Content-Type: application/json
 
 {
-  "Name": "Updated Title"
+  "name": "Updated Title"
 }`}
                 </pre>
               </div>
@@ -328,7 +360,7 @@ Content-Type: application/json
             <pre className="bg-secondary p-3 rounded-lg text-xs overflow-x-auto">
 {`{
   "_id": "550e8400-e29b-41d4-a716-446655440000",
-  "ID": "1",
+  "ID": 1,
   "Name": "My Blog Post",
   "Slug": "my-blog-post",
   "Created Date": "2026-01-05T10:00:00.000Z",
@@ -362,7 +394,7 @@ Content-Type: application/json
               <div>
                 <div className="font-medium text-xs mb-2">List All Forms</div>
                 <pre className="bg-secondary p-3 rounded-lg text-xs overflow-x-auto">
-{`GET /api/v1/forms
+{`GET /forms
 
 // Response:
 {
@@ -381,7 +413,7 @@ Content-Type: application/json
               <div>
                 <div className="font-medium text-xs mb-2">Get Form Details</div>
                 <pre className="bg-secondary p-3 rounded-lg text-xs overflow-x-auto">
-{`GET /api/v1/forms/{form_id}
+{`GET /forms/{form_id}
 
 // Response:
 {
@@ -404,7 +436,7 @@ Content-Type: application/json
                   Supports pagination and status filtering.
                 </p>
                 <pre className="bg-secondary p-3 rounded-lg text-xs overflow-x-auto">
-{`GET /api/v1/forms/{form_id}/submissions?page=1&per_page=50&status=new
+{`GET /forms/{form_id}/submissions?page=1&per_page=50&status=new
 
 // Response:
 {
@@ -429,7 +461,7 @@ Content-Type: application/json
                   Submit form data programmatically (e.g., from external frontends or integrations).
                 </p>
                 <pre className="bg-secondary p-3 rounded-lg text-xs overflow-x-auto">
-{`POST /api/v1/forms/{form_id}/submissions
+{`POST /forms/{form_id}/submissions
 Content-Type: application/json
 
 {
@@ -448,7 +480,7 @@ Content-Type: application/json
               <div>
                 <div className="font-medium text-xs mb-2">Update Submission Status</div>
                 <pre className="bg-secondary p-3 rounded-lg text-xs overflow-x-auto">
-{`PATCH /api/v1/forms/{form_id}/submissions/{submission_id}
+{`PATCH /forms/{form_id}/submissions/{submission_id}
 Content-Type: application/json
 
 {
@@ -460,7 +492,7 @@ Content-Type: application/json
               <div>
                 <div className="font-medium text-xs mb-2">Delete Submission</div>
                 <pre className="bg-secondary p-3 rounded-lg text-xs overflow-x-auto">
-{`DELETE /api/v1/forms/{form_id}/submissions/{submission_id}
+{`DELETE /forms/{form_id}/submissions/{submission_id}
 
 // Returns 204 No Content on success`}
                 </pre>
