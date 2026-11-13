@@ -24,6 +24,7 @@ import { getSlugsByCollectionId, getSlugsByItemIds } from '@/lib/repositories/co
 import { getValuesByItemIds } from '@/lib/repositories/collectionItemValueRepository';
 import { REF_PAGE_PREFIX, REF_COLLECTION_PREFIX, isCollectionItemKeyword, parseCollectionLinkValue, type ResolvedAsset } from '@/lib/link-utils';
 import { getClassesString, hasPasswordFormLayer } from '@/lib/layer-utils';
+import { getPageCssUrl, shouldLinkPageCss } from '@/lib/page-css';
 import { buildGlobalsMetaMap, buildGlobalsValueMap } from '@/lib/collection-field-utils';
 import { buildLocalizedPageUrls, getLocaleSwitchTarget, slimFoldersForLinks, slimPagesForLinks, type LocaleSwitchTarget, type LocalizedDynamicSlug } from '@/lib/page-utils';
 import { getTranslatableKey, slimTranslations } from '@/lib/locale-runtime';
@@ -404,6 +405,9 @@ export default async function PageRenderer({
   localeSwitchTarget,
 }: PageRendererProps) {
   const usePublishedData = page.is_published && !isPreview;
+  const linkedCssUrl = usePublishedData && generatedCss && shouldLinkPageCss(generatedCss)
+    ? getPageCssUrl(page.id, generatedCss)
+    : null;
   // Check if this is a 401 error page that needs password form
   const is401Page = page.error_page === 401;
   // Layers are always pre-resolved by the caller (page-fetcher).
@@ -753,13 +757,23 @@ export default async function PageRenderer({
         dangerouslySetInnerHTML={{ __html: 'input,select,textarea{appearance:none;-webkit-appearance:none}select{background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23737373\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px 16px}input[type="checkbox"]:checked,input[type="radio"]:checked{background-color:currentColor;border-color:transparent;background-size:100% 100%;background-position:center;background-repeat:no-repeat}input[type="checkbox"]:checked{background-image:url("data:image/svg+xml,%3csvg viewBox=\'0 0 16 16\' fill=\'white\' xmlns=\'http://www.w3.org/2000/svg\'%3e%3cpath d=\'M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z\'/%3e%3c/svg%3e")}input[type="radio"]:checked{background-image:url("data:image/svg+xml,%3csvg viewBox=\'0 0 16 16\' fill=\'white\' xmlns=\'http://www.w3.org/2000/svg\'%3e%3ccircle cx=\'8\' cy=\'8\' r=\'3\'/%3e%3c/svg%3e")}' }}
       />
 
-      {/* Inject CSS directly — React 19 hoists <style> with precedence to <head> */}
-      {generatedCss && (
+      {/* A linked stylesheet is hoisted to <head> by React and never removed.
+          That is safe while published pages navigate with full page loads:
+          client-side navigation would stack several pages' stylesheets and
+          let their order in the document decide which utility wins. */}
+      {generatedCss && (linkedCssUrl ? (
+        <link
+          id="ycode-styles"
+          rel="stylesheet"
+          href={linkedCssUrl}
+          precedence="default"
+        />
+      ) : (
         <style
           id="ycode-styles"
           dangerouslySetInnerHTML={{ __html: generatedCss }}
         />
-      )}
+      ))}
 
       {/* Inject color variable CSS custom properties */}
       {colorVariablesCss && (
