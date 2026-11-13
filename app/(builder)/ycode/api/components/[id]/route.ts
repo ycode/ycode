@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getComponentById,
   updateComponent,
+  updateComponentFolder,
   softDeleteComponent,
   restoreComponent,
   findEntitiesUsingComponent,
@@ -44,7 +45,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, layers, variables, variants } = body;
+    const { name, layers, variables, variants, folder } = body;
 
     const updates: any = {};
     if (name !== undefined) updates.name = name;
@@ -52,7 +53,18 @@ export async function PUT(
     if (variables !== undefined) updates.variables = variables;
     if (variants !== undefined) updates.variants = variants;
 
-    const component = await updateComponent(id, updates);
+    let component = Object.keys(updates).length > 0
+      ? await updateComponent(id, updates)
+      : null;
+
+    // Folder changes skip the content hash, so they don't count as unpublished changes
+    if (folder !== undefined) {
+      component = await updateComponentFolder(id, folder);
+    }
+
+    if (!component) {
+      return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
+    }
 
     return NextResponse.json({ data: component });
   } catch (error) {

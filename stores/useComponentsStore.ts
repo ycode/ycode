@@ -13,6 +13,7 @@ import {
   regenerateIdsWithInteractionRemapping,
 } from '@/lib/layer-utils';
 import { createComponentViaApi } from '@/lib/component-api';
+import { normalizeComponentFolder } from '@/lib/component-folder-utils';
 import { detachStyleFromLayers, updateLayersWithStyle } from '@/lib/layer-style-utils';
 import { scheduleIdle } from '@/lib/schedule-idle';
 import { generateId } from '@/lib/utils';
@@ -189,6 +190,10 @@ interface ComponentsActions {
 
   // Convenience actions
   renameComponent: (id: string, newName: string) => Promise<void>;
+  /** Move a component to a folder (null = default folder). */
+  moveComponentToFolder: (id: string, folder: string | null) => Promise<void>;
+  /** Rename a folder on all its components; `null` removes the folder. */
+  renameComponentFolder: (fromFolder: string, toFolder: string | null) => Promise<void>;
   getComponentById: (id: string) => Component | undefined;
   createComponentFromLayer: (componentId: string, layerId: string, componentName: string) => Promise<string | null>;
   restoreComponents: (componentIds: string[]) => Promise<string[]>;
@@ -865,6 +870,63 @@ export const useComponentsStore = create<ComponentsStore>((set, get) => {
             error: 'Failed to rename component',
           }));
         }
+      }
+    },
+
+    moveComponentToFolder: async (id, folder) => {
+      const nextFolder = normalizeComponentFolder(folder);
+      const previous = get().components.find((c) => c.id === id);
+      if (!previous || normalizeComponentFolder(previous.folder) === nextFolder) return;
+
+      set((state) => ({
+        components: state.components.map((c) => (c.id === id ? { ...c, folder: nextFolder } : c)),
+      }));
+
+      try {
+        const response = await fetch(`/ycode/api/components/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder: nextFolder }),
+        });
+
+        const result = await response.json();
+        if (result.error) throw new Error(result.error);
+      } catch (error) {
+        console.error('Failed to move component:', error);
+        set((state) => ({
+          components: state.components.map((c) => (c.id === id ? { ...c, folder: previous.folder ?? null } : c)),
+          error: 'Failed to move component',
+        }));
+      }
+    },
+
+    renameComponentFolder: async (fromFolder, toFolder) => {
+      const from = normalizeComponentFolder(fromFolder);
+      const to = normalizeComponentFolder(toFolder);
+      if (!from || from === to) return;
+
+      const movedIds = new Set(
+        get().components.filter((c) => normalizeComponentFolder(c.folder) === from).map((c) => c.id)
+      );
+      const setFolder = (folder: string | null) => set((state) => ({
+        components: state.components.map((c) => (movedIds.has(c.id) ? { ...c, folder } : c)),
+      }));
+
+      setFolder(to);
+
+      try {
+        const response = await fetch('/ycode/api/components', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'rename-folder', from, to }),
+        });
+
+        const result = await response.json();
+        if (result.error) throw new Error(result.error);
+      } catch (error) {
+        console.error('Failed to rename component folder:', error);
+        setFolder(from);
+        set({ error: 'Failed to rename folder' });
       }
     },
 
