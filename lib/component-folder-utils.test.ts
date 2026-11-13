@@ -5,7 +5,9 @@ import {
   DEFAULT_COMPONENT_FOLDER,
   getComponentFolderNames,
   groupComponentsByFolder,
+  moveComponentFolder,
   normalizeComponentFolder,
+  renameComponentFolderInOrder,
 } from './component-folder-utils';
 import type { Component } from '../types';
 
@@ -59,4 +61,44 @@ test('groupComponentsByFolder hides an empty default folder only when folders ex
     ['Cards']
   );
   assert.deepEqual(groupComponentsByFolder([]).map((g) => g.folder), [null]);
+});
+
+test('groupComponentsByFolder follows the stored order, unlisted folders after', () => {
+  const components = [
+    component('a', 'Navigation'),
+    component('b'),
+    component('c', 'Cards'),
+    component('d', 'Footers'),
+  ];
+
+  assert.deepEqual(
+    groupComponentsByFolder(components, ['Navigation', DEFAULT_COMPONENT_FOLDER, 'Gone']).map((g) => g.label),
+    ['Navigation', DEFAULT_COMPONENT_FOLDER, 'Cards', 'Footers']
+  );
+  assert.deepEqual(
+    groupComponentsByFolder(components, ['Footers']).map((g) => g.label),
+    [DEFAULT_COMPONENT_FOLDER, 'Footers', 'Cards', 'Navigation']
+  );
+});
+
+test('moveComponentFolder moves a folder and keeps a hidden default position', () => {
+  const keys = ['A', 'B', 'C'];
+  assert.deepEqual(moveComponentFolder(keys, 'C', 'top'), ['C', 'A', 'B']);
+  assert.deepEqual(moveComponentFolder(keys, 'B', 'up'), ['B', 'A', 'C']);
+  assert.deepEqual(moveComponentFolder(keys, 'B', 'down'), ['A', 'C', 'B']);
+  assert.deepEqual(moveComponentFolder(keys, 'A', 'bottom'), ['B', 'C', 'A']);
+  assert.deepEqual(moveComponentFolder(keys, 'A', 'up'), keys);
+  assert.deepEqual(
+    moveComponentFolder(keys, 'C', 'top', ['A', DEFAULT_COMPONENT_FOLDER, 'B', 'C']),
+    ['C', DEFAULT_COMPONENT_FOLDER, 'A', 'B']
+  );
+});
+
+test('renameComponentFolderInOrder renames in place and merges into listed folders', () => {
+  const order = ['A', DEFAULT_COMPONENT_FOLDER, 'B'];
+  assert.deepEqual(renameComponentFolderInOrder(order, 'A', 'Z'), ['Z', DEFAULT_COMPONENT_FOLDER, 'B']);
+  assert.deepEqual(renameComponentFolderInOrder(order, 'A', 'B'), [DEFAULT_COMPONENT_FOLDER, 'B']);
+  assert.deepEqual(renameComponentFolderInOrder(order, 'B', null), ['A', DEFAULT_COMPONENT_FOLDER]);
+  assert.deepEqual(renameComponentFolderInOrder(['A'], 'A', null), [DEFAULT_COMPONENT_FOLDER]);
+  assert.equal(renameComponentFolderInOrder(order, 'Missing', 'Z'), order);
 });
