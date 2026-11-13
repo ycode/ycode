@@ -38,12 +38,13 @@ import { getLayerFromTemplate, getBlockName, getBlockIcon, getLayoutTemplate, ge
 import { DEFAULT_ASSETS } from '@/lib/asset-constants';
 import { canHaveChildren, assignOrderClassToNewLayer, collectAllSettingsIds, generateUniqueSettingsId, findLayerById } from '@/lib/layer-utils';
 import { checkCircularReference, isCircularComponentReference } from '@/lib/component-utils';
-import { DEFAULT_COMPONENT_FOLDER, getComponentFolderNames, groupComponentsByFolder, normalizeComponentFolder } from '@/lib/component-folder-utils';
+import { DEFAULT_COMPONENT_FOLDER, getComponentFolderNames, normalizeComponentFolder } from '@/lib/component-folder-utils';
 import { cn, generateId } from '@/lib/utils';
 import { toast } from 'sonner';
 import { componentsApi } from '@/lib/api';
 import type { Layer } from '@/types';
 import ComponentCard from './ComponentCard';
+import ComponentFolderList, { COLLAPSED_COMPONENT_FOLDERS_KEY } from './ComponentFolderList';
 import LibraryFolderHeader from './LibraryFolderHeader';
 import RenameComponentDialog from './RenameComponentDialog';
 import SaveLayoutDialog from './SaveLayoutDialog';
@@ -365,7 +366,6 @@ export default function ElementLibrary({ isOpen, onClose, liveLayerUpdates }: El
 
   const hasComponentResults = !matchingComponentIds || matchingComponentIds.size > 0;
 
-  const componentFolderGroups = useMemo(() => groupComponentsByFolder(components), [components]);
   const componentFolderNames = useMemo(() => getComponentFolderNames(components), [components]);
 
   // Name dialog shared by "New folder…" (moves a component into it) and "Rename folder".
@@ -392,10 +392,7 @@ export default function ElementLibrary({ isOpen, onClose, liveLayerUpdates }: El
     () => Object.keys(getLayoutsByCategory())
       .filter(cat => cat !== 'Navigation' && cat !== 'Hero' && cat !== 'Blog header' && cat !== 'Blog posts')
   );
-  // Keyed by stored folder name; the default folder uses DEFAULT_COMPONENT_FOLDER
-  const [collapsedComponentFolders, toggleComponentFolder] = useSessionStorageSet(
-    'elementLibrary-collapsedComponentFolders'
-  );
+  const [collapsedComponentFolders, toggleComponentFolder] = useSessionStorageSet(COLLAPSED_COMPONENT_FOLDERS_KEY);
 
   // Sync tab when explicitly requested (e.g., "Add layout" button)
   React.useEffect(() => {
@@ -1496,6 +1493,112 @@ export default function ElementLibrary({ isOpen, onClose, liveLayerUpdates }: El
     );
   }
 
+  const renderComponentFolderActions = (folder: string, label: string) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+          aria-label={`Folder actions for ${label}`}
+        >
+          <Icon name="more" className="size-3" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => openFolderDialog({ mode: 'rename', folder })}>
+          Rename folder
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => handleRemoveFolder(folder)}>
+          Remove folder
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const renderComponentCard = (component: Component) => {
+    const isHidden = matchingComponentIds && !matchingComponentIds.has(component.id);
+    const currentFolder = normalizeComponentFolder(component.folder);
+
+    return (
+      <ComponentCard
+        key={component.id}
+        component={component}
+        className={cn(
+          circularComponentIds.has(component.id) && 'opacity-40 pointer-events-none',
+          isHidden && 'hidden',
+        )}
+        onStartRename={() => handleStartRename(component)}
+        onClick={() => handleAddComponent(component.id)}
+        onMouseDown={(e) => {
+          if (e.button !== 0) return;
+          if (circularComponentIds.has(component.id)) return;
+          const startX = e.clientX;
+          const startY = e.clientY;
+          let dragging = false;
+
+          const handleMouseMove = (moveEvent: MouseEvent) => {
+            const dx = moveEvent.clientX - startX;
+            const dy = moveEvent.clientY - startY;
+            if (!dragging && Math.sqrt(dx * dx + dy * dy) > 5) {
+              dragging = true;
+              handleElementDragStart(e, component.id, 'components', component.name);
+            }
+          };
+
+          const handleMouseUp = () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            if (!dragging) handleAddComponent(component.id);
+            dragging = false;
+          };
+
+          document.addEventListener('mousemove', handleMouseMove);
+          document.addEventListener('mouseup', handleMouseUp);
+        }}
+        actions={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Icon name="more" className="size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={(e) => handleEditComponent(component, e)}>Edit</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleStartRename(component)}>Rename</DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>Move to</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {[null, ...componentFolderNames].map((folder) => (
+                    <DropdownMenuItem
+                      key={folder ?? DEFAULT_COMPONENT_FOLDER}
+                      disabled={folder === currentFolder}
+                      onSelect={() => moveComponentToFolder(component.id, folder)}
+                    >
+                      <Icon name="folder" className="size-3" />
+                      {folder ?? DEFAULT_COMPONENT_FOLDER}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => openFolderDialog({ mode: 'new', componentId: component.id })}>
+                    <Icon name="plus" className="size-3" />
+                    New folder…
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuItem onClick={(e) => handleDeleteClick(component, e)}>Delete</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      />
+    );
+  };
+
   return (
     <div
       className={cn(
@@ -1669,134 +1772,15 @@ export default function ElementLibrary({ isOpen, onClose, liveLayerUpdates }: El
                     <EmptyTitle>No matching components</EmptyTitle>
                   </Empty>
                 )}
-                <div className={cn('flex flex-col divide-y', !hasComponentResults && 'hidden')}>
-                  {componentFolderGroups.map((group) => {
-                    const folderKey = group.folder ?? DEFAULT_COMPONENT_FOLDER;
-                    const visibleCount = matchingComponentIds
-                      ? group.components.filter(c => matchingComponentIds.has(c.id)).length
-                      : group.components.length;
-                    const hasMatches = visibleCount > 0;
-                    // Searching expands every folder that has a match
-                    const isCollapsed = !matchingComponentIds && collapsedComponentFolders.has(folderKey);
-                    const namedFolder = group.folder;
-
-                    return (
-                      <div key={folderKey} className={cn('flex flex-col', !hasMatches && 'hidden')}>
-                        <LibraryFolderHeader
-                          label={group.label}
-                          isCollapsed={isCollapsed}
-                          onToggle={() => toggleComponentFolder(folderKey)}
-                          count={visibleCount}
-                          actions={namedFolder && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                                  aria-label={`Folder actions for ${group.label}`}
-                                >
-                                  <Icon name="more" className="size-3" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onSelect={() => openFolderDialog({ mode: 'rename', folder: namedFolder })}>
-                                  Rename folder
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => handleRemoveFolder(namedFolder)}>
-                                  Remove folder
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
-                        />
-                        <div className={cn('grid grid-cols-1 gap-1.5 pb-5', isCollapsed && 'hidden')}>
-                          {group.components.map((component) => {
-                            const isHidden = matchingComponentIds && !matchingComponentIds.has(component.id);
-                            const currentFolder = normalizeComponentFolder(component.folder);
-                            return (
-                              <ComponentCard
-                                key={component.id}
-                                component={component}
-                                className={cn(
-                                  circularComponentIds.has(component.id) && 'opacity-40 pointer-events-none',
-                                  isHidden && 'hidden',
-                                )}
-                                onStartRename={() => handleStartRename(component)}
-                                onClick={() => handleAddComponent(component.id)}
-                                onMouseDown={(e) => {
-                                  if (e.button !== 0) return;
-                                  if (circularComponentIds.has(component.id)) return;
-                                  const startX = e.clientX;
-                                  const startY = e.clientY;
-                                  let dragging = false;
-
-                                  const handleMouseMove = (moveEvent: MouseEvent) => {
-                                    const dx = moveEvent.clientX - startX;
-                                    const dy = moveEvent.clientY - startY;
-                                    if (!dragging && Math.sqrt(dx * dx + dy * dy) > 5) {
-                                      dragging = true;
-                                      handleElementDragStart(e, component.id, 'components', component.name);
-                                    }
-                                  };
-
-                                  const handleMouseUp = () => {
-                                    document.removeEventListener('mousemove', handleMouseMove);
-                                    document.removeEventListener('mouseup', handleMouseUp);
-                                    if (!dragging) handleAddComponent(component.id);
-                                    dragging = false;
-                                  };
-
-                                  document.addEventListener('mousemove', handleMouseMove);
-                                  document.addEventListener('mouseup', handleMouseUp);
-                                }}
-                                actions={
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <Icon name="more" className="size-3" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem onClick={(e) => handleEditComponent(component, e)}>Edit</DropdownMenuItem>
-                                      <DropdownMenuItem onSelect={() => handleStartRename(component)}>Rename</DropdownMenuItem>
-                                      <DropdownMenuSub>
-                                        <DropdownMenuSubTrigger>Move to</DropdownMenuSubTrigger>
-                                        <DropdownMenuSubContent>
-                                          {[null, ...componentFolderNames].map((folder) => (
-                                            <DropdownMenuItem
-                                              key={folder ?? DEFAULT_COMPONENT_FOLDER}
-                                              disabled={folder === currentFolder}
-                                              onSelect={() => moveComponentToFolder(component.id, folder)}
-                                            >
-                                              <Icon name="folder" className="size-3" />
-                                              {folder ?? DEFAULT_COMPONENT_FOLDER}
-                                            </DropdownMenuItem>
-                                          ))}
-                                          <DropdownMenuSeparator />
-                                          <DropdownMenuItem onSelect={() => openFolderDialog({ mode: 'new', componentId: component.id })}>
-                                            <Icon name="plus" className="size-3" />
-                                            New folder…
-                                          </DropdownMenuItem>
-                                        </DropdownMenuSubContent>
-                                      </DropdownMenuSub>
-                                      <DropdownMenuItem onClick={(e) => handleDeleteClick(component, e)}>Delete</DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                }
-                              />
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <ComponentFolderList
+                  components={components}
+                  matchingIds={matchingComponentIds}
+                  collapsedFolders={collapsedComponentFolders}
+                  onToggleFolder={toggleComponentFolder}
+                  renderComponent={renderComponentCard}
+                  renderFolderActions={renderComponentFolderActions}
+                  className={cn(!hasComponentResults && 'hidden')}
+                />
               </div>
             )}
           </TabsContent>
