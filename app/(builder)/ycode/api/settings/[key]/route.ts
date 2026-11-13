@@ -15,6 +15,7 @@ import { clearAllCache, getAllPublishedRoutes, warmRoutes } from '@/lib/services
  * - `ai_*`: AI builder configuration (API key, model choices). Builder-only.
  * - `form_spam_protection`: enforced by the submission endpoint. The honeypot
  *   field is rendered unconditionally, so published HTML never varies with it.
+ * - `component_folder_order`: order of component folders in the builder.
  *
  * All other keys (redirects, favicon_url, ga_measurement_id, published_css,
  * color variables, etc.) are read by public pages and DO require invalidation.
@@ -26,6 +27,7 @@ const DRAFT_ONLY_SETTING_KEYS = new Set([
   'ai_enabled_models',
   'ai_agent_enabled',
   'form_spam_protection',
+  'component_folder_order',
 ]);
 
 /** Builder-only keys that must not purge the public cache. Agent secrets
