@@ -3,7 +3,8 @@
 /**
  * Rename Component Dialog
  *
- * Dialog for renaming an existing component. Mirrors CreateComponentDialog.
+ * Single-input name dialog for renaming a component. Title, placeholder and
+ * confirm label are configurable so it also serves component folders.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -22,6 +23,9 @@ interface RenameComponentDialogProps {
   onOpenChange: (open: boolean) => void;
   onConfirm: (componentName: string) => void;
   currentName?: string;
+  title?: string;
+  placeholder?: string;
+  confirmLabel?: string;
 }
 
 export default function RenameComponentDialog({
@@ -29,6 +33,9 @@ export default function RenameComponentDialog({
   onOpenChange,
   onConfirm,
   currentName,
+  title = 'Rename component',
+  placeholder = 'Name',
+  confirmLabel = 'Rename',
 }: RenameComponentDialogProps) {
   const [componentName, setComponentName] = useState(currentName || '');
 
@@ -64,17 +71,18 @@ export default function RenameComponentDialog({
         aria-describedby={undefined}
       >
         <DialogHeader>
-          <DialogTitle>Rename component</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4.5">
           <div className="flex flex-col gap-2">
             <Input
               id="component-name"
-              placeholder="Name"
+              placeholder={placeholder}
               value={componentName}
               onChange={(e) => setComponentName(e.target.value)}
               onKeyDown={handleKeyDown}
+              autoComplete="off"
               autoFocus
             />
           </div>
@@ -90,7 +98,7 @@ export default function RenameComponentDialog({
               onClick={handleConfirm}
               disabled={!componentName.trim()}
             >
-              Rename
+              {confirmLabel}
             </Button>
           </DialogFooter>
         </div>

@@ -6,6 +6,7 @@ import {
   getComponentById,
   createComponent,
   updateComponent,
+  updateComponentFolder,
   softDeleteComponent,
 } from '@/lib/repositories/componentRepository';
 import {
@@ -186,6 +187,7 @@ before editing or swapping a component (see replace_component_instances).`,
         return {
           id: c.id,
           name: c.name,
+          folder: c.folder ?? null,
           variables: c.variables || [],
           layer_count: countLayers(c.layers),
           has_published_version: publishedHashById.has(c.id),
@@ -714,8 +716,10 @@ EXAMPLE: A "Card" component with a title variable:
       name: z.string().describe('Component name (e.g. "Hero Section", "Feature Card")'),
       variables: z.array(variableSchema).optional()
         .describe('Component variables for content overrides per instance'),
+      folder: z.string().optional()
+        .describe('Builder folder to file the component in (e.g. "Cards"). Omit for the default "Components" folder.'),
     },
-    async ({ name, variables }) => {
+    async ({ name, variables, folder }) => {
       const rootLayer: Layer = {
         id: generateId(),
         name: 'div',
@@ -730,6 +734,7 @@ EXAMPLE: A "Card" component with a title variable:
         name,
         layers: [rootLayer],
         variables: componentVariables,
+        folder,
       });
 
       broadcastComponentCreated(component).catch(() => {});
@@ -750,20 +755,44 @@ EXAMPLE: A "Card" component with a title variable:
 
   server.tool(
     'update_component',
-    'Update a component\'s name and/or variables. Use update_component_layers to modify the layer tree, or the variant tools for variant management.',
+    'Update a component\'s name, variables and/or builder folder. Use update_component_layers to modify the layer tree, or the variant tools for variant management.',
     {
       component_id: z.string().describe('The component ID'),
       name: z.string().optional().describe('New component name'),
       variables: z.array(variableUpdateSchema).optional()
         .describe('Full list of variables (replaces existing). Include existing IDs to preserve them; new entries get fresh IDs.'),
+      folder: z.string().nullable().optional()
+        .describe('Builder folder (e.g. "Cards"). Pass null or "" to move it back to the default "Components" folder.'),
     },
-    async ({ component_id, name, variables }) => {
+    async ({ component_id, name, variables, folder }) => {
       const updates: { name?: string; variables?: ComponentVariable[] } = {};
       if (name !== undefined) updates.name = name;
       if (variables !== undefined) updates.variables = normalizeVariables(variables);
 
-      const component = await updateComponent(component_id, updates);
-      broadcastComponentUpdated(component_id, updates).catch(() => {});
+      if (Object.keys(updates).length === 0 && folder === undefined) {
+        return {
+          content: [{ type: 'text' as const, text: 'Error: Provide name, variables or folder to update.' }],
+          isError: true,
+        };
+      }
+
+      let component = Object.keys(updates).length > 0
+        ? await updateComponent(component_id, updates)
+        : null;
+      if (folder !== undefined) {
+        component = await updateComponentFolder(component_id, folder);
+      }
+      if (!component) {
+        return {
+          content: [{ type: 'text' as const, text: `Error: Component "${component_id}" not found.` }],
+          isError: true,
+        };
+      }
+
+      broadcastComponentUpdated(component_id, {
+        ...updates,
+        ...(folder !== undefined ? { folder: component.folder ?? null } : {}),
+      }).catch(() => {});
 
       return {
         content: [{
