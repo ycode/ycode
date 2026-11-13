@@ -145,6 +145,41 @@ export function slimTranslations(
   return slim;
 }
 
+export type ClientLinkTranslation = Pick<
+  Translation,
+  'source_type' | 'source_id' | 'content_key' | 'content_type' | 'content_value' | 'is_completed'
+>;
+
+/**
+ * The translations the client renderer needs to build localized link hrefs:
+ * page and folder slugs only, reduced to the fields `getTranslationValue`
+ * reads. CMS item slugs are swapped into `collectionItemSlugs` server-side, and
+ * a site with thousands of items would otherwise ship every item's slug row
+ * (several MB of HTML) on every page of a non-default locale.
+ */
+export function clientLinkTranslations(
+  translations: Record<string, Translation> | null | undefined
+): Record<string, ClientLinkTranslation> | undefined {
+  if (!translations) return undefined;
+
+  const slim: Record<string, ClientLinkTranslation> = {};
+  for (const key in translations) {
+    const translation = translations[key];
+    const isPageOrFolder = translation.source_type === 'page' || translation.source_type === 'folder';
+    if (isPageOrFolder && translation.content_key === 'slug') {
+      slim[key] = {
+        source_type: translation.source_type,
+        source_id: translation.source_id,
+        content_key: translation.content_key,
+        content_type: translation.content_type,
+        content_value: translation.content_value,
+        is_completed: translation.is_completed,
+      };
+    }
+  }
+  return slim;
+}
+
 /**
  * Return `page` with its custom head/body code swapped for the active locale's
  * translations. Applied once when the page is fetched so every consumer (page
