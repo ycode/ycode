@@ -128,7 +128,8 @@ export default function RichTextComponentPicker({
           matchingIds={matchingIds}
           collapsedFolders={collapsedFolders}
           onToggleFolder={toggleFolder}
-          className={cn(!hasResults && 'hidden')}
+          // Folder headers bring their own top padding; cancel the sheet's gap-4
+          className={cn('-mt-4', !hasResults && 'hidden')}
           renderComponent={(component) => (
             <ComponentCard
               key={component.id}
