@@ -38,7 +38,13 @@ import { getLayerFromTemplate, getBlockName, getBlockIcon, getLayoutTemplate, ge
 import { DEFAULT_ASSETS } from '@/lib/asset-constants';
 import { canHaveChildren, assignOrderClassToNewLayer, collectAllSettingsIds, generateUniqueSettingsId, findLayerById } from '@/lib/layer-utils';
 import { checkCircularReference, isCircularComponentReference } from '@/lib/component-utils';
-import { DEFAULT_COMPONENT_FOLDER, getComponentFolderNames, normalizeComponentFolder } from '@/lib/component-folder-utils';
+import {
+  getComponentFolderKey,
+  moveComponentFolder,
+  normalizeComponentFolder,
+  renameComponentFolderInOrder,
+} from '@/lib/component-folder-utils';
+import type { ComponentFolderGroup, ComponentFolderMove } from '@/lib/component-folder-utils';
 import { cn, generateId } from '@/lib/utils';
 import { toast } from 'sonner';
 import { componentsApi } from '@/lib/api';
@@ -54,7 +60,15 @@ import { useComponentsStore } from '@/stores/useComponentsStore';
 import { useEditorActions } from '@/hooks/use-editor-url';
 import { useLocalizationMode } from '@/hooks/use-localization-mode';
 import { useSessionStorageSet } from '@/hooks/use-session-storage-set';
+import { useComponentFolderGroups, useComponentFolderOrder } from '@/hooks/use-component-folder-order';
 import type { UseLiveLayerUpdatesReturn } from '@/hooks/use-live-layer-updates';
+
+const COMPONENT_FOLDER_MOVES: { move: ComponentFolderMove; label: string }[] = [
+  { move: 'top', label: 'Move to top' },
+  { move: 'up', label: 'Move up' },
+  { move: 'down', label: 'Move down' },
+  { move: 'bottom', label: 'Move to bottom' },
+];
 
 /**
  * Element Button with drag support
@@ -366,7 +380,12 @@ export default function ElementLibrary({ isOpen, onClose, liveLayerUpdates }: El
 
   const hasComponentResults = !matchingComponentIds || matchingComponentIds.size > 0;
 
-  const componentFolderNames = useMemo(() => getComponentFolderNames(components), [components]);
+  const { folderOrder: componentFolderOrder, saveFolderOrder: saveComponentFolderOrder } = useComponentFolderOrder();
+  const componentFolderGroups = useComponentFolderGroups(components);
+  const componentFolderKeys = useMemo(
+    () => componentFolderGroups.map((group) => getComponentFolderKey(group.folder)),
+    [componentFolderGroups]
+  );
 
   // Name dialog shared by "New folder…" (moves a component into it) and "Rename folder".
   // The target outlives `open` so the title doesn't change during the close animation.
@@ -1408,6 +1427,7 @@ export default function ElementLibrary({ isOpen, onClose, liveLayerUpdates }: El
 
       // Merging into the default folder or another existing folder is allowed
       await renameComponentFolder(folderDialog.folder, name);
+      await updateFolderOrderAfterRename(folderDialog.folder, name);
     } catch (error) {
       console.error('Failed to update component folder:', error);
     }
@@ -1416,8 +1436,24 @@ export default function ElementLibrary({ isOpen, onClose, liveLayerUpdates }: El
   const handleRemoveFolder = async (folder: string) => {
     try {
       await renameComponentFolder(folder, null);
+      await updateFolderOrderAfterRename(folder, null);
     } catch (error) {
       console.error('Failed to remove component folder:', error);
+    }
+  };
+
+  const updateFolderOrderAfterRename = async (from: string, to: string | null) => {
+    const nextOrder = renameComponentFolderInOrder(componentFolderOrder, from, to);
+    if (nextOrder !== componentFolderOrder) await saveComponentFolderOrder(nextOrder);
+  };
+
+  const handleMoveFolder = async (folderKey: string, move: ComponentFolderMove) => {
+    try {
+      await saveComponentFolderOrder(
+        moveComponentFolder(componentFolderKeys, folderKey, move, componentFolderOrder)
+      );
+    } catch (error) {
+      console.error('Failed to reorder component folders:', error);
     }
   };
 
@@ -1493,28 +1529,60 @@ export default function ElementLibrary({ isOpen, onClose, liveLayerUpdates }: El
     );
   }
 
-  const renderComponentFolderActions = (folder: string, label: string) => (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-          aria-label={`Folder actions for ${label}`}
-        >
-          <Icon name="more" className="size-3" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={() => openFolderDialog({ mode: 'rename', folder })}>
-          Rename folder
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => handleRemoveFolder(folder)}>
-          Remove folder
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+  const renderComponentFolderActions = ({ folder, label }: ComponentFolderGroup) => {
+    const folderKey = getComponentFolderKey(folder);
+    const index = componentFolderKeys.indexOf(folderKey);
+    const canReorder = componentFolderKeys.length > 1;
+
+    if (!folder && !canReorder) return null;
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+            aria-label={`Folder actions for ${label}`}
+          >
+            <Icon name="more" className="size-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {folder && (
+            <>
+              <DropdownMenuItem onSelect={() => openFolderDialog({ mode: 'rename', folder })}>
+                Rename folder
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleRemoveFolder(folder)}>
+                Remove folder
+              </DropdownMenuItem>
+            </>
+          )}
+          {canReorder && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>Move folder</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {COMPONENT_FOLDER_MOVES.map(({ move, label: moveLabel }) => (
+                  <DropdownMenuItem
+                    key={move}
+                    disabled={
+                      (move === 'top' || move === 'up')
+                        ? index === 0
+                        : index === componentFolderKeys.length - 1
+                    }
+                    onSelect={() => handleMoveFolder(folderKey, move)}
+                  >
+                    {moveLabel}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
 
   const renderComponentCard = (component: Component) => {
     const isHidden = matchingComponentIds && !matchingComponentIds.has(component.id);
@@ -1574,14 +1642,14 @@ export default function ElementLibrary({ isOpen, onClose, liveLayerUpdates }: El
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>Move to</DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
-                  {[null, ...componentFolderNames].map((folder) => (
+                  {componentFolderGroups.map(({ folder, label }) => (
                     <DropdownMenuItem
-                      key={folder ?? DEFAULT_COMPONENT_FOLDER}
+                      key={getComponentFolderKey(folder)}
                       disabled={folder === currentFolder}
                       onSelect={() => moveComponentToFolder(component.id, folder)}
                     >
                       <Icon name="folder" className="size-3" />
-                      {folder ?? DEFAULT_COMPONENT_FOLDER}
+                      {label}
                     </DropdownMenuItem>
                   ))}
                   <DropdownMenuSeparator />
@@ -1773,7 +1841,7 @@ export default function ElementLibrary({ isOpen, onClose, liveLayerUpdates }: El
                   </Empty>
                 )}
                 <ComponentFolderList
-                  components={components}
+                  groups={componentFolderGroups}
                   matchingIds={matchingComponentIds}
                   collapsedFolders={collapsedComponentFolders}
                   onToggleFolder={toggleComponentFolder}

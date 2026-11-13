@@ -17,6 +17,7 @@ import Icon from '@/components/ui/icon';
 import { Empty, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { useComponentsStore } from '@/stores/useComponentsStore';
 import { useEditorStore } from '@/stores/useEditorStore';
+import { useComponentFolderGroups } from '@/hooks/use-component-folder-order';
 import { useSessionStorageSet } from '@/hooks/use-session-storage-set';
 import { isCircularComponentReference, checkCircularReference } from '@/lib/component-utils';
 import { toast } from 'sonner';
@@ -43,6 +44,7 @@ export default function RichTextComponentPicker({
   const editingComponentId = useEditorStore(state => state.editingComponentId);
   const [search, setSearch] = useState('');
   const [collapsedFolders, toggleFolder] = useSessionStorageSet(COLLAPSED_COMPONENT_FOLDERS_KEY);
+  const folderGroups = useComponentFolderGroups(components);
 
   const circularIds = useMemo(() => {
     if (!editingComponentId) return new Set<string>();
@@ -124,7 +126,7 @@ export default function RichTextComponentPicker({
           </Empty>
         )}
         <ComponentFolderList
-          components={components}
+          groups={folderGroups}
           matchingIds={matchingIds}
           collapsedFolders={collapsedFolders}
           onToggleFolder={toggleFolder}

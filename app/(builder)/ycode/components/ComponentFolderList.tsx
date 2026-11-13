@@ -5,30 +5,32 @@
  * While searching, only folders with matches are shown, expanded.
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import LibraryFolderHeader from './LibraryFolderHeader';
-import { DEFAULT_COMPONENT_FOLDER, groupComponentsByFolder } from '@/lib/component-folder-utils';
+import { getComponentFolderKey } from '@/lib/component-folder-utils';
 import { cn } from '@/lib/utils';
+import type { ComponentFolderGroup } from '@/lib/component-folder-utils';
 import type { Component } from '@/types';
 
 /** sessionStorage key for collapsed component folders, shared by every component list */
 export const COLLAPSED_COMPONENT_FOLDERS_KEY = 'elementLibrary-collapsedComponentFolders';
 
 interface ComponentFolderListProps {
-  components: Component[];
+  /** Folder groups in display order (see groupComponentsByFolder) */
+  groups: ComponentFolderGroup[];
   /** Ids matching the current search, or null when not searching */
   matchingIds: Set<string> | null;
-  /** Collapsed folder keys (folder name, or DEFAULT_COMPONENT_FOLDER) */
+  /** Collapsed folder keys (see getComponentFolderKey) */
   collapsedFolders: Set<string>;
   onToggleFolder: (folderKey: string) => void;
   renderComponent: (component: Component) => React.ReactNode;
-  /** Actions for named folders (the default folder has none) */
-  renderFolderActions?: (folder: string, label: string) => React.ReactNode;
+  /** Optional header actions per folder */
+  renderFolderActions?: (group: ComponentFolderGroup) => React.ReactNode;
   className?: string;
 }
 
 export default function ComponentFolderList({
-  components,
+  groups,
   matchingIds,
   collapsedFolders,
   onToggleFolder,
@@ -36,12 +38,10 @@ export default function ComponentFolderList({
   renderFolderActions,
   className,
 }: ComponentFolderListProps) {
-  const groups = useMemo(() => groupComponentsByFolder(components), [components]);
-
   return (
     <div className={cn('flex flex-col divide-y', className)}>
       {groups.map((group) => {
-        const folderKey = group.folder ?? DEFAULT_COMPONENT_FOLDER;
+        const folderKey = getComponentFolderKey(group.folder);
         const visibleCount = matchingIds
           ? group.components.filter(c => matchingIds.has(c.id)).length
           : group.components.length;
@@ -54,7 +54,7 @@ export default function ComponentFolderList({
               isCollapsed={isCollapsed}
               onToggle={() => onToggleFolder(folderKey)}
               count={visibleCount}
-              actions={group.folder && renderFolderActions?.(group.folder, group.label)}
+              actions={renderFolderActions?.(group)}
             />
             <div className={cn('grid grid-cols-1 gap-1.5 pb-5', isCollapsed && 'hidden')}>
               {group.components.map(renderComponent)}
