@@ -1559,20 +1559,26 @@ export default function ElementLibrary({ isOpen, onClose, liveLayerUpdates }: El
               </DropdownMenuItem>
             </>
           )}
-          {folder && canReorder && <DropdownMenuSeparator />}
-          {canReorder && COMPONENT_FOLDER_MOVES.map(({ move, label: moveLabel }) => (
-            <DropdownMenuItem
-              key={move}
-              disabled={
-                (move === 'top' || move === 'up')
-                  ? index === 0
-                  : index === componentFolderKeys.length - 1
-              }
-              onSelect={() => handleMoveFolder(folderKey, move)}
-            >
-              {moveLabel}
-            </DropdownMenuItem>
-          ))}
+          {canReorder && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>Move folder</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {COMPONENT_FOLDER_MOVES.map(({ move, label: moveLabel }) => (
+                  <DropdownMenuItem
+                    key={move}
+                    disabled={
+                      (move === 'top' || move === 'up')
+                        ? index === 0
+                        : index === componentFolderKeys.length - 1
+                    }
+                    onSelect={() => handleMoveFolder(folderKey, move)}
+                  >
+                    {moveLabel}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     );
