@@ -7,6 +7,7 @@
  */
 
 import { getSupabaseAdmin } from '@/lib/supabase-server';
+import { normalizeComponentFolder } from '@/lib/component-folder-utils';
 import {
   displayChangeName,
   sortUnpublishedChanges,
@@ -27,6 +28,7 @@ export interface CreateComponentData {
   layers: Layer[];
   variables?: any[]; // Component variables for exposed properties
   variants?: ComponentVariant[]; // Optional explicit variants; defaults to a single "Default"
+  folder?: string | null; // Builder folder; null/omitted = default folder
 }
 
 /**
@@ -186,6 +188,11 @@ export async function createComponent(
   // Include variables if provided
   if (componentData.variables?.length) {
     insertData.variables = componentData.variables;
+  }
+
+  const folder = normalizeComponentFolder(componentData.folder);
+  if (folder) {
+    insertData.folder = folder;
   }
 
   const { data, error } = await client
@@ -899,6 +906,70 @@ export async function updateComponentThumbnail(id: string, thumbnailUrl: string 
   if (error) {
     throw new Error(`Failed to update component thumbnail: ${error.message}`);
   }
+}
+
+/**
+ * Move a draft component to a folder (null = default folder).
+ * Folders are builder-only, so the content hash is left untouched.
+ */
+export async function updateComponentFolder(
+  id: string,
+  folder: string | null,
+  tenantId?: string
+): Promise<Component> {
+  const client = await getSupabaseAdmin(tenantId);
+  if (!client) {
+    throw new Error('Failed to initialize Supabase client');
+  }
+
+  const { data, error } = await client
+    .from('components')
+    .update({ folder: normalizeComponentFolder(folder) })
+    .eq('id', id)
+    .eq('is_published', false)
+    .is('deleted_at', null)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to move component: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
+ * Rename a folder on every draft component in it. Passing null as the new
+ * name removes the folder (its components move to the default folder).
+ * Returns the number of components moved.
+ */
+export async function renameComponentFolder(
+  fromFolder: string,
+  toFolder: string | null,
+  tenantId?: string
+): Promise<number> {
+  const from = normalizeComponentFolder(fromFolder);
+  if (!from) {
+    throw new Error('The default folder cannot be renamed');
+  }
+
+  const client = await getSupabaseAdmin(tenantId);
+  if (!client) {
+    throw new Error('Failed to initialize Supabase client');
+  }
+
+  const { data, error } = await client
+    .from('components')
+    .update({ folder: normalizeComponentFolder(toFolder) })
+    .eq('folder', from)
+    .eq('is_published', false)
+    .select('id');
+
+  if (error) {
+    throw new Error(`Failed to rename component folder: ${error.message}`);
+  }
+
+  return data?.length ?? 0;
 }
 
 /**

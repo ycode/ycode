@@ -17,10 +17,12 @@ import Icon from '@/components/ui/icon';
 import { Empty, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { useComponentsStore } from '@/stores/useComponentsStore';
 import { useEditorStore } from '@/stores/useEditorStore';
+import { useSessionStorageSet } from '@/hooks/use-session-storage-set';
 import { isCircularComponentReference, checkCircularReference } from '@/lib/component-utils';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import ComponentCard from './ComponentCard';
+import ComponentFolderList, { COLLAPSED_COMPONENT_FOLDERS_KEY } from './ComponentFolderList';
 
 import type { Layer } from '@/types';
 
@@ -40,6 +42,7 @@ export default function RichTextComponentPicker({
   const components = useComponentsStore(state => state.components);
   const editingComponentId = useEditorStore(state => state.editingComponentId);
   const [search, setSearch] = useState('');
+  const [collapsedFolders, toggleFolder] = useSessionStorageSet(COLLAPSED_COMPONENT_FOLDERS_KEY);
 
   const circularIds = useMemo(() => {
     if (!editingComponentId) return new Set<string>();
@@ -120,23 +123,26 @@ export default function RichTextComponentPicker({
             </EmptyTitle>
           </Empty>
         )}
-        <div className={cn('grid grid-cols-1 gap-1.5', !hasResults && 'hidden')}>
-          {components.map(component => {
-            const isHidden = matchingIds && !matchingIds.has(component.id);
-            return (
-              <ComponentCard
-                key={component.id}
-                component={component}
-                onClick={() => handleSelect(component.id)}
-                disabled={disabled}
-                className={cn(
-                  circularIds.has(component.id) && 'opacity-40',
-                  isHidden && 'hidden',
-                )}
-              />
-            );
-          })}
-        </div>
+        <ComponentFolderList
+          components={components}
+          matchingIds={matchingIds}
+          collapsedFolders={collapsedFolders}
+          onToggleFolder={toggleFolder}
+          // Folder headers bring their own top padding; cancel the sheet's gap-4
+          className={cn('-mt-4', !hasResults && 'hidden')}
+          renderComponent={(component) => (
+            <ComponentCard
+              key={component.id}
+              component={component}
+              onClick={() => handleSelect(component.id)}
+              disabled={disabled}
+              className={cn(
+                circularIds.has(component.id) && 'opacity-40',
+                matchingIds && !matchingIds.has(component.id) && 'hidden',
+              )}
+            />
+          )}
+        />
       </SheetContent>
     </Sheet>
   );
