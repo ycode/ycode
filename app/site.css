@@ -4,7 +4,8 @@
  * Why this exists: `app/globals.css` defines the full builder UI theme —
  * shadcn color variables, dark-mode tokens, ProseMirror, Sonner toasts, etc.
  * Public pages never reference any of it; per-page utilities used by user
- * layers are inlined as `<style id="ycode-styles">` by `PageRenderer.tsx`.
+ * layers are inlined as `<style id="ycode-styles">`, or linked from
+ * `/api/page-css` when large, by `PageRenderer.tsx`.
  *
  * This stylesheet is render-blocking on every published page, so automatic
  * source detection is disabled: Tailwind only scans the files below, which
