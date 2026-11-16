@@ -105,6 +105,33 @@ export async function getPublishedLayers(pageId: string, tenantId?: string): Pro
 }
 
 /**
+ * Get only the compiled CSS of a page's published layers (skips the layer tree)
+ */
+export async function getPublishedGeneratedCss(pageId: string, tenantId?: string): Promise<string | null> {
+  const client = await getSupabaseAdmin(tenantId);
+
+  if (!client) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { data, error } = await client
+    .from('page_layers')
+    .select('generated_css')
+    .eq('page_id', pageId)
+    .eq('is_published', true)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to fetch published CSS: ${error.message}`);
+  }
+
+  return data?.generated_css || null;
+}
+
+/**
  * Create or update draft layers
  * @param pageId - Page ID
  * @param layers - Page layers
