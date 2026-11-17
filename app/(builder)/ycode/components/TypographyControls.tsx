@@ -11,6 +11,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/in
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Icon from '@/components/ui/icon';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import { useDesignSync } from '@/hooks/use-design-sync';
 import { useControlledInput } from '@/hooks/use-controlled-input';
 import { useEditorStore } from '@/stores/useEditorStore';
@@ -403,7 +404,7 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
         {!isIcon && (
           <>
             <div className="grid grid-cols-3">
-              <Label variant="muted">Font</Label>
+              <DesignPropertyLabel properties={['fontFamily']} variant="muted">Font</DesignPropertyLabel>
               <div className="col-span-2">
                 <FontPicker
                   value={fontFamily}
@@ -413,7 +414,7 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
             </div>
 
             <div className="grid grid-cols-3">
-              <Label variant="muted">Weight</Label>
+              <DesignPropertyLabel properties={['fontWeight']} variant="muted">Weight</DesignPropertyLabel>
               <div className="col-span-2 *:w-full">
                 <Select value={fontWeight} onValueChange={handleFontWeightChange}>
                   <SelectTrigger>
@@ -449,7 +450,7 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
             </div>
 
             <div className="grid grid-cols-3">
-              <Label variant="muted">Size</Label>
+              <DesignPropertyLabel properties={['fontSize']} variant="muted">Size</DesignPropertyLabel>
               <div className="col-span-2 *:w-full">
                 <InputGroup>
                   <InputGroupInput
@@ -465,7 +466,7 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
         )}
 
         <div className="grid grid-cols-3">
-          <Label variant="muted">Color</Label>
+          <DesignPropertyLabel properties={['color']} variant="muted">Color</DesignPropertyLabel>
           <div className="col-span-2 *:w-full">
             <ColorPropertyField
               value={color}
@@ -499,7 +500,7 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
 
         {hasPlaceholder && (
           <div className="grid grid-cols-3">
-            <Label variant="muted">Placeholder</Label>
+            <DesignPropertyLabel properties={['placeholderColor']} variant="muted">Placeholder</DesignPropertyLabel>
             <div className="col-span-2 *:w-full">
               <ColorPropertyField
                 solidOnly
@@ -520,7 +521,7 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
 
         {!isIcon && !hideBlockLevelProperties && (
           <div className="grid grid-cols-3">
-            <Label variant="muted">Align</Label>
+            <DesignPropertyLabel properties={['textAlign']} variant="muted">Align</DesignPropertyLabel>
             <div className="col-span-2">
               <Tabs
                 value={textAlign} onValueChange={handleTextAlignChange}
@@ -547,7 +548,7 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
 
         {!isIcon && (
           <div className="grid grid-cols-3">
-            <Label variant="muted">Spacing</Label>
+            <DesignPropertyLabel properties={['letterSpacing', 'lineHeight']} variant="muted">Spacing</DesignPropertyLabel>
             <div className="col-span-2 grid grid-cols-2 gap-2">
               <InputGroup>
                 <InputGroupAddon>
@@ -601,7 +602,12 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
 
         {!isIcon && hasUnderline && (
           <div className="grid grid-cols-3 items-start">
-            <Label variant="muted" className="h-8">Underline</Label>
+            <DesignPropertyLabel
+              properties={['textDecoration', 'textDecorationColor', 'textDecorationThickness', 'underlineOffset']}
+              variant="muted" className="h-8"
+            >
+              Underline
+            </DesignPropertyLabel>
             <div className="col-span-2 flex items-center gap-2">
               <Popover>
                 <PopoverTrigger asChild>
@@ -620,7 +626,12 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
                   <div className="flex flex-col gap-2">
 
                     <div className="grid grid-cols-3 items-start">
-                      <Label variant="muted" className="h-8">Offset</Label>
+                      <DesignPropertyLabel
+                        properties={['underlineOffset']}
+                        variant="muted" className="h-8"
+                      >
+                        Offset
+                      </DesignPropertyLabel>
                       <div className="col-span-2">
                         <Input
                           stepper
@@ -634,7 +645,12 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
                     </div>
 
                     <div className="grid grid-cols-3 items-start">
-                      <Label variant="muted" className="h-8">Thickness</Label>
+                      <DesignPropertyLabel
+                        properties={['textDecorationThickness']}
+                        variant="muted" className="h-8"
+                      >
+                        Thickness
+                      </DesignPropertyLabel>
                       <div className="col-span-2">
                         <Input
                           stepper
@@ -648,7 +664,7 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
                     </div>
 
                     <div className="grid grid-cols-3">
-                      <Label variant="muted">Color</Label>
+                      <DesignPropertyLabel properties={['textDecorationColor']} variant="muted">Color</DesignPropertyLabel>
                       <div className="col-span-2 *:w-full">
                         <ColorPropertyField
                           solidOnly
@@ -681,7 +697,12 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
 
         {!isIcon && hasFontStyle && (
           <div className="grid grid-cols-3 items-start">
-            <Label variant="muted" className="h-8">Style</Label>
+            <DesignPropertyLabel
+              properties={['fontStyle']}
+              variant="muted" className="h-8"
+            >
+              Style
+            </DesignPropertyLabel>
             <div className="col-span-2 flex items-center gap-2">
               <Select
                 value={fontStyle}
@@ -711,7 +732,12 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
 
         {!isIcon && hasTransform && (
           <div className="grid grid-cols-3 items-start">
-            <Label variant="muted" className="h-8">Transform</Label>
+            <DesignPropertyLabel
+              properties={['textTransform']}
+              variant="muted" className="h-8"
+            >
+              Transform
+            </DesignPropertyLabel>
             <div className="col-span-2 flex items-center gap-2">
               <Select
                 value={textTransform}
@@ -742,7 +768,12 @@ const TypographyControls = memo(function TypographyControls({ layer, onLayerUpda
 
         {!isIcon && hasLineClamp && (
           <div className="grid grid-cols-3 items-start">
-            <Label variant="muted" className="h-8">Line clamp</Label>
+            <DesignPropertyLabel
+              properties={['lineClamp']}
+              variant="muted" className="h-8"
+            >
+              Line clamp
+            </DesignPropertyLabel>
             <div className="col-span-2 flex items-center gap-2">
               <Input
                 stepper

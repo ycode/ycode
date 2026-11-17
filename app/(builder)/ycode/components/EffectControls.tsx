@@ -14,6 +14,7 @@ import { removeSpaces } from '@/lib/utils';
 import type { Layer } from '@/types';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import ColorPicker from './ColorPicker';
 import {
   DropdownMenu,
@@ -474,7 +475,7 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
       <div className="flex flex-col gap-2">
 
           <div className="grid grid-cols-3">
-              <Label variant="muted">Opacity</Label>
+              <DesignPropertyLabel properties={['opacity']} variant="muted">Opacity</DesignPropertyLabel>
               <div className="col-span-2 grid grid-cols-2 items-center gap-2">
                   <InputGroup>
                       <InputGroupInput
@@ -503,7 +504,12 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
 
           {(!showTextStyleControls || activeTextStyleKey === 'richTextImage') && (
             <div className="grid grid-cols-3 items-start">
-              <Label variant="muted" className="py-2">Shadow</Label>
+              <DesignPropertyLabel
+                properties={['boxShadow']}
+                variant="muted" className="py-2"
+              >
+                Shadow
+              </DesignPropertyLabel>
               <div className="col-span-2 *:w-full flex flex-col gap-2">
 
                   <Popover open={popoverOpen} onOpenChange={handleOpenPopover}>
@@ -697,7 +703,7 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
 
           {blur && (
             <div className="grid grid-cols-3">
-              <Label variant="muted">Blur</Label>
+              <DesignPropertyLabel properties={['blur']} variant="muted">Blur</DesignPropertyLabel>
               <div className="col-span-2 flex items-center gap-2">
                 <div className="flex-1 grid grid-cols-2 items-center gap-2">
                   <InputGroup>
@@ -733,7 +739,7 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
 
           {backdropBlur && (
             <div className="grid grid-cols-3">
-              <Label variant="muted">BG Blur</Label>
+              <DesignPropertyLabel properties={['backdropBlur']} variant="muted">BG Blur</DesignPropertyLabel>
               <div className="col-span-2 flex items-center gap-2">
                 <div className="flex-1 grid grid-cols-2 items-center gap-2">
                   <InputGroup>

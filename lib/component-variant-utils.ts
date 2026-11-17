@@ -29,6 +29,17 @@ export function getComponentVariantLayers(
 }
 
 /**
+ * Display name for a component being edited, e.g. "Hero / Dark".
+ * The variant is only included when the component has more than one.
+ */
+export function getComponentVariantLabel(component: Component, variantId?: string | null): string {
+  const variants = component.variants ?? [];
+  if (variants.length < 2) return component.name;
+  const variant = variants.find(v => v.id === variantId) ?? variants[0];
+  return `${component.name} / ${variant.name}`;
+}
+
+/**
  * Option for a variant-variable selector. `componentName` is included so
  * selectors can disambiguate the same variant name across different target
  * components when a generic Variant variable is linked from instances of more

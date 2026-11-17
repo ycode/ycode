@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import { DEFAULT_ASSETS } from '@/lib/asset-utils';
 import {
   Select,
@@ -78,7 +79,12 @@ export default function BackgroundImageSettings({
 
   return (
     <div className="grid grid-cols-3 items-start">
-      <Label variant="muted" className="py-2">Image</Label>
+      <DesignPropertyLabel
+        properties={['backgroundImage', 'backgroundSize', 'backgroundPosition', 'backgroundRepeat']}
+        variant="muted" className="py-2"
+      >
+        Image
+      </DesignPropertyLabel>
       <div className="col-span-2 *:w-full">
         <Popover>
           <PopoverTrigger asChild>
@@ -209,7 +215,7 @@ export default function BackgroundImageSettings({
               )}
 
               <div className="grid grid-cols-3">
-                <Label variant="muted">Size</Label>
+                <DesignPropertyLabel properties={['backgroundSize']} variant="muted">Size</DesignPropertyLabel>
                 <div className="col-span-2 *:w-full">
                   <Select
                     value={backgroundSize || 'cover'}
@@ -230,7 +236,7 @@ export default function BackgroundImageSettings({
               </div>
 
               <div className="grid grid-cols-3">
-                <Label variant="muted">Position</Label>
+                <DesignPropertyLabel properties={['backgroundPosition']} variant="muted">Position</DesignPropertyLabel>
                 <div className="col-span-2 *:w-full">
                   <Select
                     value={backgroundPosition || 'center'}
@@ -257,7 +263,7 @@ export default function BackgroundImageSettings({
               </div>
 
               <div className="grid grid-cols-3">
-                <Label variant="muted">Repeat</Label>
+                <DesignPropertyLabel properties={['backgroundRepeat']} variant="muted">Repeat</DesignPropertyLabel>
                 <div className="col-span-2 *:w-full">
                   <Select
                     value={backgroundRepeat || 'no-repeat'}

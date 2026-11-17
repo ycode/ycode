@@ -3,6 +3,7 @@
 import { useCallback, useMemo, memo } from 'react';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import { useDesignSync } from '@/hooks/use-design-sync';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { removeSpaces } from '@/lib/utils';
@@ -513,7 +514,7 @@ const BackgroundsControls = memo(function BackgroundsControls({ layer, onLayerUp
 
       <div className="flex flex-col gap-2">
         <div className="grid grid-cols-3">
-          <Label variant="muted">Color</Label>
+          <DesignPropertyLabel properties={['backgroundColor']} variant="muted">Color</DesignPropertyLabel>
           <div className="col-span-2 *:w-full">
             <ColorPropertyField
               value={backgroundColor}

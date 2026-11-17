@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import IconTabs, { type IconOption } from './IconTabs';
 import { useDesignSync } from '@/hooks/use-design-sync';
 import { useControlledInputs } from '@/hooks/use-controlled-input';
@@ -258,7 +259,7 @@ const LayoutControls = memo(function LayoutControls({ layer, onLayerUpdate }: La
       <div className="flex flex-col gap-2">
 
           <div className="grid grid-cols-3">
-              <Label variant="muted">Type</Label>
+              <DesignPropertyLabel properties={['display']} variant="muted">Type</DesignPropertyLabel>
               <div className="col-span-2">
                   <IconTabs
                     value={layoutType}
@@ -270,7 +271,7 @@ const LayoutControls = memo(function LayoutControls({ layer, onLayerUpdate }: La
 
           {isFlex && (
               <div className="grid grid-cols-3">
-                  <Label variant="muted">Direction</Label>
+                  <DesignPropertyLabel properties={['flexDirection', 'flexWrap']} variant="muted">Direction</DesignPropertyLabel>
                   <div className="col-span-2 flex items-center gap-2">
                       <div className="flex-1">
                           <IconTabs
@@ -319,7 +320,7 @@ const LayoutControls = memo(function LayoutControls({ layer, onLayerUpdate }: La
           {(isFlex || isGrid) && (
               <>
                   <div className="grid grid-cols-3">
-                      <Label variant="muted">Align</Label>
+                      <DesignPropertyLabel properties={['alignItems']} variant="muted">Align</DesignPropertyLabel>
                       <div className="col-span-2">
                           <Tabs
                             value={alignItems || 'start'}
@@ -345,7 +346,7 @@ const LayoutControls = memo(function LayoutControls({ layer, onLayerUpdate }: La
                   </div>
 
                   <div className="grid grid-cols-3">
-                      <Label variant="muted">Justify</Label>
+                      <DesignPropertyLabel properties={['justifyContent']} variant="muted">Justify</DesignPropertyLabel>
                       <div className="col-span-2 *:w-full">
                           <Select value={justifyContent} onValueChange={handleJustifyChange}>
                               <SelectTrigger>
@@ -369,7 +370,7 @@ const LayoutControls = memo(function LayoutControls({ layer, onLayerUpdate }: La
 
           {isGrid && (
               <div className="grid grid-cols-3">
-                  <Label variant="muted">Grid</Label>
+                  <DesignPropertyLabel properties={['gridTemplateColumns', 'gridTemplateRows']} variant="muted">Grid</DesignPropertyLabel>
                   <div className="col-span-2 grid grid-cols-2 gap-2">
                       <InputGroup>
                           <InputGroupAddon>
@@ -419,7 +420,7 @@ const LayoutControls = memo(function LayoutControls({ layer, onLayerUpdate }: La
 
           {(isFlex || isGrid) && (
               <div className="grid grid-cols-3">
-                  <Label variant="muted">Gap</Label>
+                  <DesignPropertyLabel properties={['gap', 'columnGap', 'rowGap']} variant="muted">Gap</DesignPropertyLabel>
                   {/* Locked: one gap for both axes. Unlocked: the single input is
                       replaced by Columns / Rows inputs (Webflow-style padlock). */}
                   <div className="col-span-2 flex items-center gap-2">
