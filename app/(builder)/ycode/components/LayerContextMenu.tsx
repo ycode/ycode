@@ -28,6 +28,7 @@ import { buildAssetUrlMap, collectLayerAssetIds } from '@/lib/asset-utils';
 import { canHaveChildren, canPasteIntoParent, LINK_NESTING_ERROR, findLayerById, getClassesString, regenerateInteractionIds, canCopyLayer, canDeleteLayer, regenerateIdsWithInteractionRemapping, removeLayerById, findParentAndIndex, insertLayerAfter, updateLayerProps, canConvertToCollection, isExcludedFromCollection, getCollectionVariable, getTextHeadingConversion, resetBindingsOnCollectionSourceChange } from '@/lib/layer-utils';
 import { getStyleIds } from '@/lib/layer-style-resolve';
 import { getLayerIcon, getLayerName } from '@/lib/layer-display-utils';
+import { sanitizeSlug } from '@/lib/page-utils';
 import { cloneDeep } from 'lodash';
 import { toast } from 'sonner';
 import { Icon } from '@/components/ui/icon';
@@ -657,7 +658,7 @@ function LayerContextMenuInner({
       const template = stripIds(layer);
 
       // Generate layout key from name
-      const layoutKey = layoutName.toLowerCase().replace(/\s+/g, '-');
+      const layoutKey = sanitizeSlug(layoutName);
 
       // Use FormData to send file + data
       const formData = new FormData();

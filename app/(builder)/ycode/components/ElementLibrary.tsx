@@ -45,6 +45,7 @@ import {
   renameComponentFolderInOrder,
 } from '@/lib/component-folder-utils';
 import type { ComponentFolderGroup, ComponentFolderMove } from '@/lib/component-folder-utils';
+import { sanitizeSlug } from '@/lib/page-utils';
 import { cn, generateId } from '@/lib/utils';
 import { toast } from 'sonner';
 import { componentsApi } from '@/lib/api';
@@ -1163,7 +1164,7 @@ export default function ElementLibrary({ isOpen, onClose, liveLayerUpdates }: El
 
     try {
       // Generate new layout key from name
-      const newLayoutKey = layoutName.toLowerCase().replace(/\s+/g, '-');
+      const newLayoutKey = sanitizeSlug(layoutName);
 
       // Call API to update layout
       const response = await fetch(`/ycode/api/layouts/${oldLayoutKey}`, {
