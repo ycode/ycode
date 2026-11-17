@@ -8,6 +8,15 @@ import { getComponentsByIds } from '@/lib/repositories/componentRepository';
 import { getDraftLayers, upsertDraftLayers } from '@/lib/repositories/pageLayersRepository';
 import type { Asset, Layer } from '@/types';
 import { collectComponentIds } from '@/lib/component-utils';
+import {
+  LAYOUT_PREVIEWS_DIR,
+  getLayoutPreviewExtension,
+  getLayoutPreviewPath,
+  isLayoutsApiEnabled,
+  isValidLayoutKey,
+  toTsObjectLiteral,
+  toTsStringLiteral,
+} from '@/lib/layout-file-utils';
 
 const LAYOUTS_FILE_PATH = path.join(process.cwd(), 'lib', 'templates', 'layouts.ts');
 const LAYOUT_ASSETS_DIR = path.join(process.cwd(), 'public', 'ycode', 'layouts', 'assets');
@@ -286,6 +295,10 @@ function localizeMediaAssets(
 }
 
 export async function POST(request: NextRequest) {
+  if (!isLayoutsApiEnabled()) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   try {
     const formData = await request.formData();
 
@@ -297,9 +310,24 @@ export async function POST(request: NextRequest) {
     const pageId = formData.get('pageId') as string | null;
     const layerId = formData.get('layerId') as string | null;
 
-    if (!layoutKey || !layoutName || !category || !templateStr) {
+    if (!layoutKey || !layoutName || typeof category !== 'string' || !category || typeof templateStr !== 'string' || !templateStr) {
       return NextResponse.json(
         { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    if (!isValidLayoutKey(layoutKey)) {
+      return NextResponse.json(
+        { error: 'Layout key may only contain lowercase letters, numbers and dashes' },
+        { status: 400 }
+      );
+    }
+
+    const imageExtension = imageFile ? getLayoutPreviewExtension(imageFile.name) : '.webp';
+    if (!imageExtension) {
+      return NextResponse.json(
+        { error: 'Preview image must be a webp, png, jpg or gif file' },
         { status: 400 }
       );
     }
@@ -391,25 +419,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle image upload if provided
-    let imageExtension = '.webp'; // default
     if (imageFile) {
-      const layoutsDir = path.join(process.cwd(), 'public', 'ycode', 'layouts', 'previews');
+      await fs.mkdir(LAYOUT_PREVIEWS_DIR, { recursive: true });
 
-      // Ensure layouts directory exists
-      try {
-        await fs.access(layoutsDir);
-      } catch {
-        await fs.mkdir(layoutsDir, { recursive: true });
-      }
-
-      // Get file extension
-      imageExtension = path.extname(imageFile.name) || '.webp';
-      const imagePath = path.join(layoutsDir, `${layoutKey}${imageExtension}`);
-
-      // Convert File to Buffer and save
       const bytes = await imageFile.arrayBuffer();
       const buffer = Buffer.from(bytes);
-      await fs.writeFile(imagePath, buffer);
+      await fs.writeFile(getLayoutPreviewPath(layoutKey, imageExtension), buffer);
     }
 
     // Read the existing file
@@ -440,24 +455,22 @@ export async function POST(request: NextRequest) {
 
     // If we had to make the key unique, also rename the saved image file
     if (uniqueLayoutKey !== layoutKey && imageFile) {
-      const layoutsDir = path.join(process.cwd(), 'public', 'ycode', 'layouts', 'previews');
-      const oldImagePath = path.join(layoutsDir, `${layoutKey}${imageExtension}`);
-      const newImagePath = path.join(layoutsDir, `${uniqueLayoutKey}${imageExtension}`);
-
       try {
-        await fs.rename(oldImagePath, newImagePath);
+        await fs.rename(
+          getLayoutPreviewPath(layoutKey, imageExtension),
+          getLayoutPreviewPath(uniqueLayoutKey, imageExtension)
+        );
       } catch (error) {
         console.error('Failed to rename image file:', error);
       }
     }
 
     // Format the new layout entry with single quotes and 2-space indentation
-    const templateJson = JSON.stringify(template, null, 2)
-      .replace(/"/g, '\'');
+    const templateLiteral = toTsObjectLiteral(template);
     const newLayoutEntry = `  '${uniqueLayoutKey}': {
-    category: '${category}',
+    category: ${toTsStringLiteral(category)},
     previewImage: '${finalImagePath}',
-    template: ${templateJson.replace(/\n/g, '\n    ')},
+    template: ${templateLiteral.replace(/\n/g, '\n    ')},
   },`;
 
     // Insert the new layout before the closing brace
@@ -466,7 +479,7 @@ export async function POST(request: NextRequest) {
     // Replace in file content
     fileContent = fileContent.replace(
       /export const layoutTemplates: Record<string, LayoutTemplate> = \{[\s\S]*?\n\};/,
-      `export const layoutTemplates: Record<string, LayoutTemplate> = {${updatedLayouts}\n};`
+      () => `export const layoutTemplates: Record<string, LayoutTemplate> = {${updatedLayouts}\n};`
     );
 
     // Write back to file

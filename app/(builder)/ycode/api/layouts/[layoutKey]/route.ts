@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
+import {
+  LAYOUT_PREVIEW_EXTENSIONS,
+  getLayoutPreviewPath,
+  isLayoutsApiEnabled,
+  isValidLayoutKey,
+  toTsStringLiteral,
+} from '@/lib/layout-file-utils';
 
 const LAYOUTS_FILE_PATH = path.join(process.cwd(), 'lib', 'templates', 'layouts.ts');
 
@@ -8,13 +15,24 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ layoutKey: string }> }
 ) {
+  if (!isLayoutsApiEnabled()) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   try {
     const { layoutKey } = await params;
     const { newLayoutKey, newLayoutName, category } = await request.json();
 
-    if (!layoutKey || !newLayoutKey || !newLayoutName || !category) {
+    if (!layoutKey || !newLayoutKey || !newLayoutName || typeof category !== 'string' || !category) {
       return NextResponse.json(
         { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    if (!isValidLayoutKey(layoutKey) || !isValidLayoutKey(newLayoutKey)) {
+      return NextResponse.json(
+        { error: 'Layout key may only contain lowercase letters, numbers and dashes' },
         { status: 400 }
       );
     }
@@ -54,7 +72,7 @@ export async function PATCH(
     let searchKey = layoutKey; // Key to use for finding boundaries
     if (layoutKey !== uniqueNewLayoutKey) {
       const keyRegex = new RegExp(`'${layoutKey}':\\s*\\{`, 'g');
-      fileContent = fileContent.replace(keyRegex, `'${uniqueNewLayoutKey}': {`);
+      fileContent = fileContent.replace(keyRegex, () => `'${uniqueNewLayoutKey}': {`);
       searchKey = uniqueNewLayoutKey;
     }
 
@@ -85,14 +103,17 @@ export async function PATCH(
     const layoutSection = fileContent.substring(updatedLayoutStartIndex, layoutEndIndex);
 
     // Update category in this section
-    const categoryRegex = /category:\s*'[^']*'/;
-    const updatedLayoutSection = layoutSection.replace(categoryRegex, `category: '${category}'`);
+    const categoryRegex = /category:\s*'(?:[^'\\]|\\.)*'/;
+    const updatedLayoutSection = layoutSection.replace(
+      categoryRegex,
+      () => `category: ${toTsStringLiteral(category)}`
+    );
 
     // Update preview image path in this section
     const previewImageRegex = /previewImage:\s*'[^']*'/;
     const updatedLayoutSectionWithImage = updatedLayoutSection.replace(
-      previewImageRegex, 
-      `previewImage: '/ycode/layouts/previews/${uniqueNewLayoutKey}.webp'`
+      previewImageRegex,
+      () => `previewImage: '/ycode/layouts/previews/${uniqueNewLayoutKey}.webp'`
     );
 
     // Replace the section in the file
@@ -120,12 +141,16 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ layoutKey: string }> }
 ) {
+  if (!isLayoutsApiEnabled()) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   try {
     const { layoutKey } = await params;
 
-    if (!layoutKey) {
+    if (!isValidLayoutKey(layoutKey)) {
       return NextResponse.json(
-        { error: 'Layout key is required' },
+        { error: 'A valid layout key is required' },
         { status: 400 }
       );
     }
@@ -177,14 +202,9 @@ export async function DELETE(
 
     // Try to delete the associated image file
     try {
-      const layoutsDir = path.join(process.cwd(), 'public', 'ycode', 'layouts', 'previews');
-      
-      // Try common image extensions
-      const extensions = ['.webp', '.png', '.jpg', '.jpeg', '.gif'];
-      for (const ext of extensions) {
-        const imagePath = path.join(layoutsDir, `${layoutKey}${ext}`);
+      for (const ext of LAYOUT_PREVIEW_EXTENSIONS) {
         try {
-          await fs.unlink(imagePath);
+          await fs.unlink(getLayoutPreviewPath(layoutKey, ext));
           break; // Stop after successfully deleting one
         } catch {
           // File doesn't exist with this extension, try next
