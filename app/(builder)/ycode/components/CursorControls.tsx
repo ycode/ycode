@@ -3,6 +3,7 @@
 import { memo, useCallback, useMemo } from 'react';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import { useDesignSync } from '@/hooks/use-design-sync';
 import { useEditorStore } from '@/stores/useEditorStore';
 import type { Layer } from '@/types';
@@ -68,7 +69,7 @@ const CursorControls = memo(function CursorControls({ layer, onLayerUpdate }: Cu
 
       <div className="flex flex-col gap-2">
         <div className="grid grid-cols-3">
-          <Label variant="muted">Style</Label>
+          <DesignPropertyLabel properties={['cursor']} variant="muted">Style</DesignPropertyLabel>
           <div className="col-span-2 *:w-full">
             <Select
               value={cursor}

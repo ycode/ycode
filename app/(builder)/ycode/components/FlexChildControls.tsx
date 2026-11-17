@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import Icon from '@/components/ui/icon';
 import { InputGroup, InputGroupInput } from '@/components/ui/input-group';
-import { Label } from '@/components/ui/label';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import IconTabs, { type IconOption } from './IconTabs';
 import SettingsPanel from './SettingsPanel';
 import { useDesignSync } from '@/hooks/use-design-sync';
@@ -62,14 +62,16 @@ const ORDER_OPTIONS: IconOption<OrderMode>[] = [
 ];
 
 /** Optional setting row with an "x" that removes it (same look as Sizing's Aspect ratio) */
-function RemovableRow({ label, onRemove, children }: {
+function RemovableRow({ label, properties, onRemove, children }: {
   label: string;
+  /** Design properties the row controls, for the label's source tooltip */
+  properties: string[];
   onRemove: () => void;
   children: React.ReactNode;
 }) {
   return (
     <div className="grid grid-cols-3">
-      <Label variant="muted">{label}</Label>
+      <DesignPropertyLabel properties={properties} variant="muted">{label}</DesignPropertyLabel>
       <div className="col-span-2 flex items-center gap-2">
         <div className="flex-1">{children}</div>
         <button
@@ -259,7 +261,7 @@ const FlexChildControls = memo(function FlexChildControls({ layer, parentLayer =
       }
     >
       <div className="grid grid-cols-3">
-        <Label variant="muted">Align</Label>
+        <DesignPropertyLabel properties={['alignSelf']} variant="muted">Align</DesignPropertyLabel>
         <div className="col-span-2">
           <IconTabs
             value={alignSelf}
@@ -271,7 +273,10 @@ const FlexChildControls = memo(function FlexChildControls({ layer, parentLayer =
       </div>
 
       {hasSizing && (
-        <RemovableRow label="Sizing" onRemove={handleRemoveSizing}>
+        <RemovableRow
+          label="Sizing" properties={['flex', 'flexGrow', 'flexShrink']}
+          onRemove={handleRemoveSizing}
+        >
           <IconTabs
             value={sizing}
             options={SIZING_OPTIONS}
@@ -281,7 +286,10 @@ const FlexChildControls = memo(function FlexChildControls({ layer, parentLayer =
       )}
 
       {hasOrder && (
-        <RemovableRow label="Order" onRemove={handleRemoveOrder}>
+        <RemovableRow
+          label="Order" properties={['order']}
+          onRemove={handleRemoveOrder}
+        >
           <IconTabs
             value={orderMode}
             options={ORDER_OPTIONS}
@@ -292,7 +300,7 @@ const FlexChildControls = memo(function FlexChildControls({ layer, parentLayer =
 
       {orderMode === 'custom' && (
         <div className="grid grid-cols-3">
-          <Label variant="muted">Position</Label>
+          <DesignPropertyLabel properties={['order']} variant="muted">Position</DesignPropertyLabel>
           <div className="col-span-2">
             <InputGroup>
               <InputGroupInput

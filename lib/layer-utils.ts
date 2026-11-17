@@ -142,6 +142,18 @@ export function indexedFindParentCollectionLayer(indexes: LayerIndexes, layerId:
   return null;
 }
 
+/** All parent layers of a layer, nearest first */
+export function indexedGetAncestors(indexes: LayerIndexes, layerId: string): Layer[] {
+  const ancestors: Layer[] = [];
+  let parentId = indexes.parentMap.get(layerId);
+  while (parentId) {
+    const parent = indexes.layerMap.get(parentId);
+    if (parent) ancestors.push(parent);
+    parentId = indexes.parentMap.get(parentId);
+  }
+  return ancestors;
+}
+
 export function indexedFindAncestor(indexes: LayerIndexes, layerId: string, predicate: (layer: Layer) => boolean): Layer | null {
   let parentId = indexes.parentMap.get(layerId);
   while (parentId) {

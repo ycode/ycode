@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import BoundFieldPill from './BoundFieldPill';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import { CollectionFieldSelector, type FieldGroup, type FieldSourceType } from './CollectionFieldSelector';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { SPAN_FIELD_TYPES, filterFieldGroupsByType, flattenFieldGroups, getFieldName } from '@/lib/collection-field-utils';
@@ -147,7 +148,7 @@ export default function GridSpanRow({ label, layer, property, value, onChange, o
 
   return (
     <div className="grid grid-cols-3">
-      <Label variant="muted">{label}</Label>
+      <DesignPropertyLabel properties={[property]} variant="muted">{label}</DesignPropertyLabel>
       <div className="col-span-2 flex items-center gap-2">
         <Select value={isInheritingBinding ? '' : toSelectValue(value)} onValueChange={handleChange}>
           <SelectTrigger

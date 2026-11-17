@@ -12,10 +12,10 @@ import {
 import Icon from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
-import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import GridSpanRow from './GridSpanRow';
 import SettingsPanel from './SettingsPanel';
 import { useDesignSync } from '@/hooks/use-design-sync';
@@ -380,7 +380,12 @@ const SizingControls = memo(function SizingControls({ layer, parentLayer = null,
       )}
 
       <div className="grid grid-cols-3 items-start">
-        <Label variant="muted" className="h-8">Width</Label>
+        <DesignPropertyLabel
+          properties={['width', 'minWidth', 'maxWidth']}
+          variant="muted" className="h-8"
+        >
+          Width
+        </DesignPropertyLabel>
         <div className="col-span-2 flex flex-col gap-2">
           <ButtonGroup>
             <Input
@@ -472,7 +477,12 @@ const SizingControls = memo(function SizingControls({ layer, parentLayer = null,
       </div>
 
       <div className="grid grid-cols-3 items-start">
-        <Label variant="muted" className="h-8">Height</Label>
+        <DesignPropertyLabel
+          properties={['height', 'minHeight', 'maxHeight']}
+          variant="muted" className="h-8"
+        >
+          Height
+        </DesignPropertyLabel>
         <div className="col-span-2 flex flex-col gap-2">
           <ButtonGroup>
             <Input
@@ -561,7 +571,7 @@ const SizingControls = memo(function SizingControls({ layer, parentLayer = null,
       </div>
 
       <div className="grid grid-cols-3">
-        <Label variant="muted">Overflow</Label>
+        <DesignPropertyLabel properties={['overflow']} variant="muted">Overflow</DesignPropertyLabel>
         <div className="col-span-2 *:w-full">
           <Select value={overflow} onValueChange={handleOverflowChange}>
             <SelectTrigger>
@@ -582,7 +592,7 @@ const SizingControls = memo(function SizingControls({ layer, parentLayer = null,
 
       {(['image', 'video'].includes(layer?.name || '')) && (
         <div className="grid grid-cols-3 items-center">
-          <Label variant="muted">Object fit</Label>
+          <DesignPropertyLabel properties={['objectFit', 'objectPosition']} variant="muted">Object fit</DesignPropertyLabel>
           <div className="col-span-2 flex items-center gap-1">
             <Select value={objectFit} onValueChange={handleObjectFitChange}>
               <SelectTrigger className="flex-1">
@@ -637,7 +647,12 @@ const SizingControls = memo(function SizingControls({ layer, parentLayer = null,
 
       {aspectRatio && (
         <div className="grid grid-cols-3 items-start">
-          <Label variant="muted" className="h-8">Aspect ratio</Label>
+          <DesignPropertyLabel
+            properties={['aspectRatio']}
+            variant="muted" className="h-8"
+          >
+            Aspect ratio
+          </DesignPropertyLabel>
           <div className="col-span-2 flex items-center gap-2">
             <ButtonGroup className="flex-1">
               <Input

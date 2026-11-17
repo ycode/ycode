@@ -7,6 +7,7 @@ import { Slider } from '@/components/ui/slider';
 import Icon from '@/components/ui/icon';
 import { InputGroup } from '@/components/ui/input-group';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import {
   convertToRgba,
   parseTextShadow,
@@ -61,7 +62,12 @@ const TextShadowField = memo(function TextShadowField({
 
   return (
     <div className="grid grid-cols-3 items-start">
-      <Label variant="muted" className="h-8">Shadow</Label>
+      <DesignPropertyLabel
+        properties={['textShadow']}
+        variant="muted" className="h-8"
+      >
+        Shadow
+      </DesignPropertyLabel>
       <div className="col-span-2 flex items-center gap-2">
         <Popover>
           <PopoverTrigger asChild>

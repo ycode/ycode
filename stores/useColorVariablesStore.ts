@@ -7,6 +7,7 @@
 
 import { create } from 'zustand';
 import { colorVariablesApi } from '@/lib/api';
+import { colorVariableToCss } from '@/lib/color-variable-utils';
 import type { ColorVariable, Layer } from '@/types';
 
 interface ColorVariablesState {
@@ -106,19 +107,7 @@ export const useColorVariablesStore = create<ColorVariablesStore>((set, get) => 
     try {
       const variable = get().colorVariables.find((v) => v.id === id);
       const rawValue = variable?.value || '#000000';
-      const hexOnly = rawValue.split('/')[0];
-
-      const toCssRgba = (val: string): string => {
-        const parts = val.split('/');
-        if (parts.length < 2) return val;
-        const hex = parts[0];
-        const opacity = parseInt(parts[1]) / 100;
-        const r = parseInt(hex.slice(1, 3), 16);
-        const g = parseInt(hex.slice(3, 5), 16);
-        const b = parseInt(hex.slice(5, 7), 16);
-        return `rgba(${r},${g},${b},${opacity})`;
-      };
-      const cssValue = toCssRgba(rawValue);
+      const cssValue = colorVariableToCss(rawValue);
 
       const response = await colorVariablesApi.delete(id);
 
@@ -212,23 +201,12 @@ export const useColorVariablesStore = create<ColorVariablesStore>((set, get) => 
     const { colorVariables, previewOverride } = get();
     if (colorVariables.length === 0 && !previewOverride) return '';
 
-    const toCssValue = (val: string): string => {
-      const parts = val.split('/');
-      if (parts.length < 2) return val;
-      const hex = parts[0];
-      const opacity = parseInt(parts[1]) / 100;
-      const r = parseInt(hex.slice(1, 3), 16);
-      const g = parseInt(hex.slice(3, 5), 16);
-      const b = parseInt(hex.slice(5, 7), 16);
-      return `rgba(${r},${g},${b},${opacity})`;
-    };
-
     const declarations = colorVariables
       .map((v) => {
         if (previewOverride && v.id === previewOverride.id) {
-          return `--${v.id}: ${toCssValue(previewOverride.value)};`;
+          return `--${v.id}: ${colorVariableToCss(previewOverride.value)};`;
         }
-        return `--${v.id}: ${toCssValue(v.value)};`;
+        return `--${v.id}: ${colorVariableToCss(v.value)};`;
       })
       .join(' ');
 

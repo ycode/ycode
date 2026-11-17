@@ -8,6 +8,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/in
 import { Slider } from '@/components/ui/slider';
 import Icon from '@/components/ui/icon';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import { useDesignSync } from '@/hooks/use-design-sync';
 import { useControlledInputs } from '@/hooks/use-controlled-input';
 import { useEditorStore } from '@/stores/useEditorStore';
@@ -131,7 +132,7 @@ const PositionControls = memo(function PositionControls({ layer, onLayerUpdate }
 
       <div className="flex flex-col gap-2">
         <div className="grid grid-cols-3">
-          <Label variant="muted">Type</Label>
+          <DesignPropertyLabel properties={['position']} variant="muted">Type</DesignPropertyLabel>
           <div className="col-span-2 *:w-full">
             <Select value={position} onValueChange={handlePositionChange}>
               <SelectTrigger>
@@ -153,7 +154,12 @@ const PositionControls = memo(function PositionControls({ layer, onLayerUpdate }
         {showPositionInputs && (
           <>
             <div className="grid grid-cols-3 items-start">
-              <Label variant="muted" className="h-8">Offset</Label>
+              <DesignPropertyLabel
+                properties={['top', 'right', 'bottom', 'left']}
+                variant="muted" className="h-8"
+              >
+                Offset
+              </DesignPropertyLabel>
               <div className="col-span-2 flex flex-col gap-2">
                 <div className="grid grid-cols-2 gap-2">
                   <InputGroup>
@@ -240,7 +246,7 @@ const PositionControls = memo(function PositionControls({ layer, onLayerUpdate }
 
         {position !== 'static' && (
           <div className="grid grid-cols-3">
-            <Label variant="muted">Z Index</Label>
+            <DesignPropertyLabel properties={['zIndex']} variant="muted">Z Index</DesignPropertyLabel>
             <div className="col-span-2 grid grid-cols-2 items-center gap-2">
               <Input
                 type="text"

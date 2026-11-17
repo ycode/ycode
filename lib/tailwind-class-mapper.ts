@@ -2507,17 +2507,80 @@ function shouldIncludeClassForProperty(className: string, property: string, patt
         return true;
       }
 
-      // CRITICAL: Preserve backgroundImage when updating other background properties
-      // backgroundSize, backgroundPosition, backgroundRepeat should NOT remove backgroundImage
+      // Image and color values are never a size/position/repeat
       if (property === 'backgroundSize' || property === 'backgroundPosition' || property === 'backgroundRepeat') {
-        if (isImage) {
-          return false; // Don't remove image classes when updating size/position/repeat
+        if (isImage || isColorValue(value)) {
+          return false;
         }
       }
     }
   }
 
   return true;
+}
+
+export interface InheritedValue {
+  /** Winning class without its breakpoint/state prefix */
+  value: string | null;
+  /** Breakpoint the winning class is defined on */
+  source: Breakpoint | null;
+  /** Winning class as written, including prefixes */
+  className: string | null;
+}
+
+/** Breakpoints a breakpoint inherits from, desktop-first, ending with itself */
+export function getBreakpointInheritanceChain(breakpoint: Breakpoint): Breakpoint[] {
+  if (breakpoint === 'mobile') return ['desktop', 'tablet', 'mobile'];
+  if (breakpoint === 'tablet') return ['desktop', 'tablet'];
+  return ['desktop'];
+}
+
+function findClassAt(
+  classes: string[],
+  property: string,
+  pattern: RegExp,
+  breakpoint: Breakpoint,
+  uiState: UIState,
+): string | null {
+  const bpPrefix = getBreakpointPrefix(breakpoint);
+
+  if (uiState !== 'neutral') {
+    const statePrefix = getUIStatePrefix(uiState);
+    const fullPrefix = bpPrefix + statePrefix;
+    return classes.find(cls => {
+      const withPrefix = bpPrefix ? cls.startsWith(fullPrefix) : cls.startsWith(statePrefix);
+      if (!withPrefix) return false;
+      // Smart filtering for text-[...] classes
+      return shouldIncludeClassForProperty(cls.slice(fullPrefix.length), property, pattern);
+    }) ?? null;
+  }
+
+  return classes.find(cls => {
+    if (bpPrefix) {
+      if (!cls.startsWith(bpPrefix)) return false;
+      const afterBp = cls.slice(bpPrefix.length);
+      // Must not have a state prefix
+      if (afterBp.match(/^(hover|focus|active|disabled|visited|current):/)) return false;
+      return shouldIncludeClassForProperty(afterBp, property, pattern);
+    }
+    // Desktop: no breakpoint prefix, no state prefix
+    if (cls.match(/^(max-lg|max-md|hover|focus|active|disabled|visited|current):/)) return false;
+    return shouldIncludeClassForProperty(cls, property, pattern);
+  }) ?? null;
+}
+
+/**
+ * Class setting a property at exactly this breakpoint and state (no inheritance)
+ */
+export function getPropertyClassAt(
+  classes: string[],
+  property: string,
+  breakpoint: Breakpoint,
+  uiState: UIState = 'neutral'
+): string | null {
+  const pattern = getConflictingClassPattern(property);
+  if (!pattern) return null;
+  return findClassAt(classes, property, pattern, breakpoint, uiState);
 }
 
 /**
@@ -2529,58 +2592,33 @@ export function getInheritedValue(
   property: string,
   currentBreakpoint: Breakpoint,
   currentUIState: UIState = 'neutral'
-): { value: string | null; source: Breakpoint | null } {
+): InheritedValue {
   const pattern = getConflictingClassPattern(property);
-  if (!pattern) return { value: null, source: null };
-
-  // Define inheritance chain based on current breakpoint (desktop-first)
-  const inheritanceChain: Breakpoint[] =
-    currentBreakpoint === 'mobile' ? ['desktop', 'tablet', 'mobile'] :
-      currentBreakpoint === 'tablet' ? ['desktop', 'tablet'] :
-        ['desktop'];
+  if (!pattern) return { value: null, source: null, className: null };
 
   // Check each breakpoint in order (desktop → tablet → mobile)
   let lastValue: string | null = null;
   let lastSource: Breakpoint | null = null;
+  let lastClassName: string | null = null;
 
-  for (const breakpoint of inheritanceChain) {
+  for (const breakpoint of getBreakpointInheritanceChain(currentBreakpoint)) {
     const bpPrefix = getBreakpointPrefix(breakpoint);
-    const statePrefix = getUIStatePrefix(currentUIState);
 
     // If we're in a specific state (not neutral), check for state-specific class at this breakpoint
     if (currentUIState !== 'neutral') {
-      const fullPrefix = bpPrefix + statePrefix;
-      const stateClass = classes.find(cls => {
-        const withPrefix = bpPrefix ? cls.startsWith(fullPrefix) : cls.startsWith(statePrefix);
-        if (!withPrefix) return false;
-        const baseClass = cls.slice(fullPrefix.length);
-        // Smart filtering for text-[...] classes
-        return shouldIncludeClassForProperty(baseClass, property, pattern);
-      });
+      const fullPrefix = bpPrefix + getUIStatePrefix(currentUIState);
+      const stateClass = findClassAt(classes, property, pattern, breakpoint, currentUIState);
 
       if (stateClass) {
         lastValue = stateClass.slice(fullPrefix.length);
         lastSource = breakpoint;
+        lastClassName = stateClass;
         // Don't break - keep checking for more specific breakpoints
       }
     }
 
     // Check for neutral state class at this breakpoint (always check this)
-    const neutralClass = classes.find(cls => {
-      if (bpPrefix) {
-        if (!cls.startsWith(bpPrefix)) return false;
-        const afterBp = cls.slice(bpPrefix.length);
-        // Must not have a state prefix
-        if (afterBp.match(/^(hover|focus|active|disabled|visited|current):/)) return false;
-        // Smart filtering for text-[...] classes
-        return shouldIncludeClassForProperty(afterBp, property, pattern);
-      } else {
-        // Desktop: no breakpoint prefix, no state prefix
-        if (cls.match(/^(max-lg|max-md|hover|focus|active|disabled|visited|current):/)) return false;
-        // Smart filtering for text-[...] classes
-        return shouldIncludeClassForProperty(cls, property, pattern);
-      }
-    });
+    const neutralClass = findClassAt(classes, property, pattern, breakpoint, 'neutral');
 
     if (neutralClass) {
       const baseClass = bpPrefix ? neutralClass.slice(bpPrefix.length) : neutralClass;
@@ -2591,11 +2629,13 @@ export function getInheritedValue(
         // In neutral: always update with neutral value (override any state values that shouldn't be here)
         lastValue = baseClass;
         lastSource = breakpoint;
+        lastClassName = neutralClass;
       } else {
         // In specific state: only use neutral as fallback if no state-specific value exists yet
         if (!lastValue) {
           lastValue = baseClass;
           lastSource = breakpoint;
+          lastClassName = neutralClass;
         }
       }
     }
@@ -2611,7 +2651,7 @@ export function getInheritedValue(
     }
   }
 
-  return { value: lastValue, source: lastSource };
+  return { value: lastValue, source: lastSource, className: lastClassName };
 }
 
 /**

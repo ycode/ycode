@@ -20,6 +20,7 @@ import { useLayerStylesStore } from '@/stores/useLayerStylesStore';
 import { useComponentsStore } from '@/stores/useComponentsStore';
 import { useAssetsStore } from '@/stores/useAssetsStore';
 import { useColorVariablesStore } from '@/stores/useColorVariablesStore';
+import { colorVarIdsFromClasses } from '@/lib/color-variable-utils';
 import { getStyleIds } from '@/lib/layer-style-resolve';
 
 export const YCODE_CLIPBOARD_SIGNATURE = '__ycode_clipboard__';
@@ -250,24 +251,6 @@ export function hasCmsBinding(value: unknown): boolean {
     if (hasCmsBinding(obj[key])) return true;
   }
   return false;
-}
-
-const COLOR_VAR_RE = /var\(--([^)\s]+)\)/g;
-
-/**
- * Pull color-variable ids out of a class string. Classes reference tokens as
- * `var(--<id>)` (and `color:var(--<id>)`); the caller filters these to ids that
- * actually exist in the color-variables store so Tailwind's own `--tw-*` vars
- * are ignored.
- */
-export function colorVarIdsFromClasses(classes: string | string[] | undefined, out: Set<string>): void {
-  if (!classes) return;
-  const str = Array.isArray(classes) ? classes.join(' ') : classes;
-  let match: RegExpExecArray | null;
-  COLOR_VAR_RE.lastIndex = 0;
-  while ((match = COLOR_VAR_RE.exec(str)) !== null) {
-    if (match[1]) out.add(match[1]);
-  }
 }
 
 const FONT_CLASS_RE = /font-\[([^\]]+)\]/g;

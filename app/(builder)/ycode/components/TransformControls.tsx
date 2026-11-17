@@ -1,7 +1,6 @@
 'use client';
 
 import { memo, useState, useCallback, useEffect } from 'react';
-import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -9,6 +8,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import Icon from '@/components/ui/icon';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import SettingsPanel from './SettingsPanel';
 import { useDesignSync } from '@/hooks/use-design-sync';
 import { useControlledInputs } from '@/hooks/use-controlled-input';
@@ -207,7 +207,7 @@ const TransformControls = memo(function TransformControls({ layer, onLayerUpdate
     >
       {/* Origin */}
       <div className="grid grid-cols-3">
-        <Label variant="muted">Origin</Label>
+        <DesignPropertyLabel properties={['transformOrigin']} variant="muted">Origin</DesignPropertyLabel>
         <div className="col-span-2 *:w-full">
           <Select value={transformOrigin || 'center'} onValueChange={handleOriginChange}>
             <SelectTrigger>
@@ -227,7 +227,7 @@ const TransformControls = memo(function TransformControls({ layer, onLayerUpdate
       {/* Scale */}
       {visibility.scale && (
         <div className="grid grid-cols-3">
-          <Label variant="muted">Scale</Label>
+          <DesignPropertyLabel properties={['scale']} variant="muted">Scale</DesignPropertyLabel>
           <div className="col-span-2 flex items-center gap-2">
             <div className="grid grid-cols-2 items-center gap-2 flex-1 min-w-0">
               <Input
@@ -253,7 +253,7 @@ const TransformControls = memo(function TransformControls({ layer, onLayerUpdate
       {/* Rotate */}
       {visibility.rotate && (
         <div className="grid grid-cols-3">
-          <Label variant="muted">Rotate</Label>
+          <DesignPropertyLabel properties={['rotate']} variant="muted">Rotate</DesignPropertyLabel>
           <div className="col-span-2 flex items-center gap-2">
             <InputGroup className="flex-1 min-w-0">
               <InputGroupInput
@@ -273,7 +273,12 @@ const TransformControls = memo(function TransformControls({ layer, onLayerUpdate
         if (!visibility[field.id]) return null;
         return (
           <div key={field.id} className="grid grid-cols-3 items-start">
-            <Label variant="muted" className="h-8">{field.label} X/Y</Label>
+            <DesignPropertyLabel
+              properties={field.keys}
+              variant="muted" className="h-8"
+            >
+              {field.label} X/Y
+            </DesignPropertyLabel>
             <div className="col-span-2 flex items-start gap-2">
               <div className="grid grid-cols-2 gap-2 flex-1 min-w-0">
                 {field.keys.map((key) => (
