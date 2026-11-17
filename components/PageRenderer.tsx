@@ -197,14 +197,34 @@ function stripTextStylesForClient(textStyles: Layer['textStyles']): Layer['textS
  *
  * The RSC Flight payload serializes everything passed to 'use client'
  * components, so stripping here avoids doubling the response size.
+ *
+ * `isItemTemplate` marks the collection item templates kept on `_filterConfig`
+ * / `_paginationMeta`. The public renderer never renders them: the client
+ * posts them back to the filter / load-more API, which re-renders items from
+ * them, and AnimationInitializer rebuilds the injected items' layers from
+ * them. So they keep `interactions` (bound by AnimationInitializer) and
+ * `componentOverrides` (scanned by the API's asset lookup).
  */
-function stripSSROnlyData(layers: Layer[]): Layer[] {
+function stripSSROnlyData(layers: Layer[], isItemTemplate = false): Layer[] {
   return layers.map(layer => {
     const stripped: Layer = { ...layer };
 
     delete stripped._collectionItemValues;
     delete stripped._collectionItemSlug;
     delete stripped._layerDataMap;
+
+    // Translation-lookup marker. Translations are baked into the layers on the
+    // server and the client only receives page/folder slug rows (see
+    // clientLinkTranslations), so no client lookup can match a component key.
+    delete stripped._masterComponentId;
+
+    if (!isItemTemplate) {
+      // Component overrides are applied by resolveComponents, and interactions
+      // reach the client through AnimationInitializer's own prop (see
+      // extractAnimationLayers); the public renderer reads neither.
+      delete stripped.componentOverrides;
+      delete stripped.interactions;
+    }
 
     // Editor/server-only fields the public renderer never reads: `customName`
     // (tree label), `open` (tree expand state), `restrictions` (copy/delete/move/
@@ -240,39 +260,56 @@ function stripSSROnlyData(layers: Layer[]): Layer[] {
     if (stripped._filterConfig?.layerTemplate) {
       stripped._filterConfig = {
         ...stripped._filterConfig,
-        layerTemplate: stripSSROnlyData(stripped._filterConfig.layerTemplate),
+        layerTemplate: stripSSROnlyData(stripped._filterConfig.layerTemplate, true),
       };
     }
 
     if (stripped._paginationMeta?.layerTemplate) {
       stripped._paginationMeta = {
         ...stripped._paginationMeta,
-        layerTemplate: stripSSROnlyData(stripped._paginationMeta.layerTemplate),
+        layerTemplate: stripSSROnlyData(stripped._paginationMeta.layerTemplate, true),
       };
     }
 
     if (stripped.children) {
-      stripped.children = stripSSROnlyData(stripped.children);
+      stripped.children = stripSSROnlyData(stripped.children, isItemTemplate);
     }
 
     return stripped;
   });
 }
 
-/** Extract minimal animation data from the layer tree for AnimationInitializer */
+/**
+ * Extract minimal animation data from the layer tree for AnimationInitializer.
+ *
+ * Returns a flat list, in tree order, of only the layers the runtime acts on:
+ * those with interactions, and `settings.hidden` layers (an interaction may
+ * reveal one, and the runtime needs the flag to keep it collapsed across
+ * breakpoint resets). AnimationInitializer looks elements up by layer id and
+ * never uses the hierarchy, so the ancestors in between are dead weight.
+ */
 function extractAnimationLayers(layers: Layer[]): Layer[] {
-  return layers
-    // Keep `settings.hidden` layers: an interaction may reveal one, and the
-    // runtime needs the flag to keep it collapsed across breakpoint resets.
-    .filter(layer => layer.interactions?.length || layer.children?.length || layer.settings?.hidden)
-    .map(layer => ({
-      id: layer.id,
-      name: layer.name,
-      classes: '',
-      interactions: layer.interactions,
-      ...(layer.settings?.hidden ? { settings: { hidden: true, keepInHtml: layer.settings.keepInHtml } } : {}),
-      children: layer.children ? extractAnimationLayers(layer.children) : undefined,
-    }));
+  const animationLayers: Layer[] = [];
+
+  const collect = (layer: Layer) => {
+    const hasInteractions = !!layer.interactions?.length;
+    const isHidden = !!layer.settings?.hidden;
+
+    if (hasInteractions || isHidden) {
+      animationLayers.push({
+        id: layer.id,
+        name: layer.name,
+        classes: '',
+        ...(hasInteractions ? { interactions: layer.interactions } : {}),
+        ...(isHidden ? { settings: { hidden: true, keepInHtml: layer.settings?.keepInHtml } } : {}),
+      });
+    }
+
+    layer.children?.forEach(collect);
+  };
+
+  layers.forEach(collect);
+  return animationLayers;
 }
 
 /** Scan a Tiptap JSON node for richTextComponent nodes and test their pre-resolved

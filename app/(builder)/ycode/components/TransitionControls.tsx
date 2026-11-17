@@ -1,12 +1,12 @@
 'use client';
 
 import { memo, useState, useCallback, useEffect } from 'react';
-import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import Icon from '@/components/ui/icon';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import SettingsPanel from './SettingsPanel';
 import { useDesignSync } from '@/hooks/use-design-sync';
 import { useControlledInputs } from '@/hooks/use-controlled-input';
@@ -153,7 +153,7 @@ const TransitionControls = memo(function TransitionControls({ layer, onLayerUpda
     >
       {/* Transition Property */}
       <div className="grid grid-cols-3">
-        <Label variant="muted">Property</Label>
+        <DesignPropertyLabel properties={['transitionProperty']} variant="muted">Property</DesignPropertyLabel>
         <div className="col-span-2 *:w-full">
           <Select
             value={transitionProperty}
@@ -179,7 +179,7 @@ const TransitionControls = memo(function TransitionControls({ layer, onLayerUpda
 
       {/* Duration */}
       <div className="grid grid-cols-3">
-        <Label variant="muted">Duration</Label>
+        <DesignPropertyLabel properties={['duration']} variant="muted">Duration</DesignPropertyLabel>
         <div className="col-span-2">
           <InputGroup>
             <InputGroupInput
@@ -195,7 +195,7 @@ const TransitionControls = memo(function TransitionControls({ layer, onLayerUpda
       {/* Easing */}
       {hasEasing && (
         <div className="grid grid-cols-3">
-          <Label variant="muted">Easing</Label>
+          <DesignPropertyLabel properties={['easing']} variant="muted">Easing</DesignPropertyLabel>
           <div className="col-span-2 flex items-center gap-2">
             <div className="flex-1 min-w-0 *:w-full">
               <Select
@@ -223,7 +223,7 @@ const TransitionControls = memo(function TransitionControls({ layer, onLayerUpda
       {/* Delay */}
       {hasDelay && (
         <div className="grid grid-cols-3">
-          <Label variant="muted">Delay</Label>
+          <DesignPropertyLabel properties={['delay']} variant="muted">Delay</DesignPropertyLabel>
           <div className="col-span-2 flex items-center gap-2">
             <InputGroup className="flex-1 min-w-0">
               <InputGroupInput

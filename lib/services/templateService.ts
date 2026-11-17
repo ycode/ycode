@@ -4,6 +4,12 @@ import { STORAGE_BUCKET, STORAGE_FOLDERS } from '@/lib/asset-constants';
 import { migrations } from '../migrations-loader';
 import { guardKnexForMigrationReplay } from '@/lib/migration-replay-guard';
 import { YCODE_EXTERNAL_API_URL } from '@/lib/config';
+import type { Knex } from 'knex';
+
+/** The part of a node-postgres connection needed to run template SQL. */
+interface PgConnection {
+  query: (sql: string) => Promise<unknown>;
+}
 
 /**
  * Tables to truncate when applying a template.
@@ -332,6 +338,25 @@ async function runPendingMigrationsForTemplate(
 }
 
 /**
+ * Run SQL from the template service on the transaction's connection, bypassing
+ * knex's query pipeline.
+ *
+ * knex.raw() treats every `?` as a binding placeholder, including the ones
+ * inside string literals, and rewrites them to `$1`, `$2`, ... That corrupted
+ * template content: image URLs with a query string, text ending in a question
+ * mark. Escaping them as `\?` is not enough, because knex also drops any
+ * backslashes directly before a `?` (e.g. a `/\?/` regex in custom code).
+ *
+ * @param trx - Transaction the SQL must run in
+ * @param sql - SQL returned by the template service, sent as-is
+ */
+async function runTemplateSql(trx: Knex.Transaction, sql: string): Promise<void> {
+  // Inside a transaction this resolves to the transaction's own connection
+  const connection: PgConnection = await trx.client.acquireConnection();
+  await connection.query(sql);
+}
+
+/**
  * Apply a template to the database
  *
  * This will:
@@ -388,7 +413,7 @@ export async function applyTemplate(
       // 2a. Clear previous template assets (keep user uploads) - only if table exists
       const assetsTableExists = await trx.schema.hasTable('assets');
       if (assetsTableExists) {
-        await trx.raw(sql.clearPreviousTemplate);
+        await runTemplateSql(trx, sql.clearPreviousTemplate);
       }
 
       // 2b. Clean up empty asset folders from previous template - only if tables exist
@@ -420,7 +445,7 @@ export async function applyTemplate(
       }
 
       // 2d. Insert template data
-      await trx.raw(sql.insert);
+      await runTemplateSql(trx, sql.insert);
 
       // Re-enable FK constraints
       await trx.raw('SET session_replication_role = DEFAULT');

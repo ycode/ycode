@@ -16,6 +16,7 @@ import Icon from '@/components/ui/icon';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import DesignPropertyLabel from './DesignPropertyLabel';
 import { useDesignSync } from '@/hooks/use-design-sync';
 import { useControlledInputs } from '@/hooks/use-controlled-input';
 import { useModeToggle } from '@/hooks/use-mode-toggle';
@@ -374,7 +375,12 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
       <div className="flex flex-col gap-2">
 
         <div className="grid grid-cols-3 items-start">
-          <Label variant="muted" className="h-8">Radius</Label>
+          <DesignPropertyLabel
+            properties={['borderRadius', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius']}
+            variant="muted" className="h-8"
+          >
+            Radius
+          </DesignPropertyLabel>
           <div className="col-span-2 flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <Input
@@ -455,7 +461,12 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
         </div>
 
         <div className="grid grid-cols-3 items-start">
-          <Label variant="muted" className="h-8">Border</Label>
+          <DesignPropertyLabel
+            properties={['borderWidth', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderStyle', 'borderColor']}
+            variant="muted" className="h-8"
+          >
+            Border
+          </DesignPropertyLabel>
           <div className="col-span-2">
             <Popover>
               <PopoverTrigger asChild>
@@ -502,7 +513,12 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
               <PopoverContent className="w-64 mr-4">
                 <div className="flex flex-col gap-2">
                   <div className="grid grid-cols-3 items-start">
-                    <Label variant="muted" className="h-8">Width</Label>
+                    <DesignPropertyLabel
+                      properties={['borderWidth', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth']}
+                      variant="muted" className="h-8"
+                    >
+                      Width
+                    </DesignPropertyLabel>
                     <div className="col-span-2 flex flex-col gap-2">
                       <div className="flex items-center gap-2">
                         <Input
@@ -575,7 +591,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                   </div>
 
                   <div className="grid grid-cols-3">
-                    <Label variant="muted">Style</Label>
+                    <DesignPropertyLabel properties={['borderStyle']} variant="muted">Style</DesignPropertyLabel>
                     <div className="col-span-2 *:w-full">
                       <Select value={borderStyle} onValueChange={handleBorderStyleChange}>
                         <SelectTrigger>
@@ -594,7 +610,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                   </div>
 
                   <div className="grid grid-cols-3">
-                    <Label variant="muted">Color</Label>
+                    <DesignPropertyLabel properties={['borderColor']} variant="muted">Color</DesignPropertyLabel>
                     <div className="col-span-2 *:w-full">
                       <ColorPropertyField
                         solidOnly
@@ -620,7 +636,12 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
 
         {hasDivider && (
           <div className="grid grid-cols-3 items-start">
-            <Label variant="muted" className="h-8">Dividers</Label>
+            <DesignPropertyLabel
+              properties={['divideX', 'divideY', 'divideStyle', 'divideColor']}
+              variant="muted" className="h-8"
+            >
+              Dividers
+            </DesignPropertyLabel>
             <div className="col-span-2 flex items-center gap-2">
               <Popover>
                 <PopoverTrigger asChild>
@@ -635,7 +656,12 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                 <PopoverContent className="w-64 mr-4">
                   <div className="flex flex-col gap-2">
                     <div className="grid grid-cols-3 items-start">
-                      <Label variant="muted" className="h-8">Width</Label>
+                      <DesignPropertyLabel
+                        properties={['divideX', 'divideY']}
+                        variant="muted" className="h-8"
+                      >
+                        Width
+                      </DesignPropertyLabel>
                       <div className="col-span-2 grid grid-cols-2 gap-2">
                         <InputGroup>
                           <InputGroupAddon>
@@ -684,7 +710,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                       </div>
                     </div>
                     <div className="grid grid-cols-3">
-                      <Label variant="muted">Style</Label>
+                      <DesignPropertyLabel properties={['divideStyle']} variant="muted">Style</DesignPropertyLabel>
                       <div className="col-span-2 *:w-full">
                         <Select value={divideStyle} onValueChange={handleDivideStyleChange}>
                           <SelectTrigger>
@@ -702,7 +728,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                       </div>
                     </div>
                     <div className="grid grid-cols-3">
-                      <Label variant="muted">Color</Label>
+                      <DesignPropertyLabel properties={['divideColor']} variant="muted">Color</DesignPropertyLabel>
                       <div className="col-span-2 *:w-full">
                         <ColorPropertyField
                           solidOnly
@@ -734,7 +760,12 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
 
         {hasOutline && (
           <div className="grid grid-cols-3 items-start">
-            <Label variant="muted" className="h-8">Outline</Label>
+            <DesignPropertyLabel
+              properties={['outlineWidth', 'outlineColor', 'outlineOffset']}
+              variant="muted" className="h-8"
+            >
+              Outline
+            </DesignPropertyLabel>
             <div className="col-span-2 flex items-center gap-2">
               <Popover>
                 <PopoverTrigger asChild>
@@ -755,7 +786,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                 <PopoverContent className="w-64 mr-4">
                   <div className="flex flex-col gap-2">
                     <div className="grid grid-cols-3">
-                      <Label variant="muted">Width</Label>
+                      <DesignPropertyLabel properties={['outlineWidth']} variant="muted">Width</DesignPropertyLabel>
                       <div className="col-span-2">
                         <Input
                           stepper
@@ -768,7 +799,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                       </div>
                     </div>
                     <div className="grid grid-cols-3">
-                      <Label variant="muted">Color</Label>
+                      <DesignPropertyLabel properties={['outlineColor']} variant="muted">Color</DesignPropertyLabel>
                       <div className="col-span-2 *:w-full">
                         <ColorPropertyField
                           solidOnly
@@ -785,7 +816,7 @@ const BorderControls = memo(function BorderControls({ layer, onLayerUpdate, acti
                       </div>
                     </div>
                     <div className="grid grid-cols-3">
-                      <Label variant="muted">Offset</Label>
+                      <DesignPropertyLabel properties={['outlineOffset']} variant="muted">Offset</DesignPropertyLabel>
                       <div className="col-span-2">
                         <Input
                           stepper

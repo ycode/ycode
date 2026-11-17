@@ -100,8 +100,10 @@ import { classesToDesign, mergeDesign, removeConflictsForClass, removeRedundantS
 import { getStyleIds } from '@/lib/layer-style-utils';
 import { resolveLayerClasses, chipClasses } from '@/lib/layer-style-resolve';
 import { buildDesign } from '@/lib/import/design';
+import { getDesignPanelSource } from '@/lib/design-property-source';
+import { DesignPropertySourceProvider } from '@/lib/design-property-source-context';
 import { cn } from '@/lib/utils';
-import { isFieldVariable, getCollectionVariable, findParentCollectionLayer, findAllParentCollectionLayers, isTextEditable, isTextContentLayer, isRichTextLayer, isHeadingLayer, findLayerWithParent, resetBindingsOnCollectionSourceChange, isInputInsideFilter, resolveFilterInputId, getLayerIndexes, indexedFindLayerById, indexedFindLayerWithParent, indexedFindParentCollectionLayer } from '@/lib/layer-utils';
+import { isFieldVariable, getCollectionVariable, findParentCollectionLayer, findAllParentCollectionLayers, isTextEditable, isTextContentLayer, isRichTextLayer, isHeadingLayer, findLayerWithParent, resetBindingsOnCollectionSourceChange, isInputInsideFilter, resolveFilterInputId, getLayerIndexes, indexedFindLayerById, indexedFindLayerWithParent, indexedFindParentCollectionLayer, indexedGetAncestors } from '@/lib/layer-utils';
 import { sanitizePaginationParamName, stripLayerPrefix } from '@/lib/pagination-url-utils';
 import { detachSpecificLayerFromComponent } from '@/lib/component-utils';
 import { convertContentToValue, parseValueToContent } from '@/lib/cms-variables-utils';
@@ -264,6 +266,7 @@ const RightSidebar = React.memo(function RightSidebar({
   const setActiveInteraction = useEditorStore((state) => state.setActiveInteraction);
   const clearActiveInteraction = useEditorStore((state) => state.clearActiveInteraction);
   const activeTextStyleKey = useEditorStore((state) => state.activeTextStyleKey);
+  const setActiveTextStyleKey = useEditorStore((state) => state.setActiveTextStyleKey);
   const showTextStyleControls = useEditorStore((state) => state.showTextStyleControls());
   const startElementPicker = useEditorStore((state) => state.startElementPicker);
   const stopElementPicker = useEditorStore((state) => state.stopElementPicker);
@@ -904,6 +907,22 @@ const RightSidebar = React.memo(function RightSidebar({
   // text-style path inside useDesignSync owns the update.
   const controlLayer = showTextStyleControls ? selectedLayer : designLayer;
   const controlUpdate = showTextStyleControls ? handleLayerUpdate : handleDesignUpdate;
+
+  // Lets setting labels explain where the values the controls show come from.
+  const handleSelectSourceStyle = useCallback((styleId: string) => {
+    setActiveTextStyleKey(null);
+    setActiveStyleId(styleId);
+  }, [setActiveTextStyleKey]);
+
+  const designPanelSource = useMemo(() => {
+    if (!selectedLayer) return null;
+    const source = getDesignPanelSource(selectedLayer, {
+      textStyleKey: showTextStyleControls ? activeTextStyleKey : null,
+      stylesById,
+      ancestors: indexedGetAncestors(layerIndexes, selectedLayer.id),
+    });
+    return { ...source, onSelectStyle: handleSelectSourceStyle, onSelectLayer: setSelectedLayerId };
+  }, [selectedLayer, activeTextStyleKey, showTextStyleControls, stylesById, layerIndexes, handleSelectSourceStyle, setSelectedLayerId]);
 
   // Update local state when selected layer changes (for settings fields)
   const [prevSelectedLayerId, setPrevSelectedLayerId] = useState<string | null>(null);
@@ -2067,6 +2086,7 @@ const RightSidebar = React.memo(function RightSidebar({
 
           <div className="overflow-y-auto no-scrollbar overflow-x-hidden divide-y ">
 
+          <DesignPropertySourceProvider value={designPanelSource}>
           {shouldShowControl('layout', selectedLayer) && !showTextStyleControls && (
             <LayoutControls
               layer={controlLayer}
@@ -2161,6 +2181,7 @@ const RightSidebar = React.memo(function RightSidebar({
           {shouldShowControl('transitions', selectedLayer) && (
             <TransitionControls layer={controlLayer} onLayerUpdate={controlUpdate} />
           )}
+          </DesignPropertySourceProvider>
 
           {/* Classes panel - shows classes for active text style or layer */}
           <SettingsPanel
