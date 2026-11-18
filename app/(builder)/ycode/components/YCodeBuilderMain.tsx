@@ -199,7 +199,6 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
   const migrationsComplete = useMigrationStore((state) => state.migrationsComplete);
   const setMigrationsComplete = useMigrationStore((state) => state.setMigrationsComplete);
   const [isSaving, setIsSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [showPageDropdown, setShowPageDropdown] = useState(false);
@@ -1246,7 +1245,6 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
     setHasUnsavedChanges(false);
     try {
       await saveDraft(pageId);
-      setLastSaved(new Date());
     } catch (error) {
       console.error('Save failed:', error);
       setHasUnsavedChanges(true);
@@ -1269,7 +1267,6 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
       setHasUnsavedChanges(false);
       try {
         await saveDraft(pageId);
-        setLastSaved(new Date());
       } catch (error) {
         console.error('Autosave failed:', error);
         setHasUnsavedChanges(true); // Restore unsaved flag on error
@@ -2294,7 +2291,6 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
         setCurrentPageId={routeType === 'settings' || routeType === 'profile' || routeType === 'forms' || routeType === 'integrations' ? () => {} : setCurrentPageId}
         isSaving={routeType === 'settings' || routeType === 'localization' || routeType === 'profile' || routeType === 'forms' || routeType === 'integrations' ? false : isCurrentlySaving}
         hasUnsavedChanges={routeType === 'settings' || routeType === 'localization' || routeType === 'profile' || routeType === 'forms' || routeType === 'integrations' ? false : hasUnsavedChanges}
-        lastSaved={routeType === 'settings' || routeType === 'localization' || routeType === 'profile' || routeType === 'forms' || routeType === 'integrations' ? null : lastSaved}
         isPublishing={isPublishing}
         setIsPublishing={setIsPublishing}
         saveImmediately={routeType === 'settings' || routeType === 'localization' || routeType === 'profile' || routeType === 'forms' || routeType === 'integrations' ? async () => {} : saveImmediately}
