@@ -88,6 +88,7 @@ import type { ExternalPastePlacement } from '@/stores/useExternalPasteStore';
 
 // 6. Utils/lib
 import { findHomepage } from '@/lib/page-utils';
+import { exitPreviewOnEscape } from '@/lib/preview-shortcuts';
 import { hasTextSelection } from '@/lib/utils';
 import { getStyleIds } from '@/lib/layer-style-resolve';
 import { findLayerById, getClassesString, removeLayerById, canCopyLayer, canDeleteLayer, regenerateIdsWithInteractionRemapping, findParentAndIndex, insertLayerAfter, updateLayerProps, getLayerIndexes, removeRichTextSublayer, canPasteIntoParent, canHaveChildren, LINK_NESTING_ERROR } from '@/lib/layer-utils';
@@ -1592,6 +1593,12 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
       if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
         e.preventDefault(); // Prevent the browser print dialog
         window.dispatchEvent(new CustomEvent('togglePreview'));
+        return;
+      }
+
+      // Escape - Exit preview, instead of selecting the parent layer behind it
+      if (e.key === 'Escape' && useEditorStore.getState().isPreviewMode) {
+        exitPreviewOnEscape(e);
         return;
       }
 
