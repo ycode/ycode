@@ -64,6 +64,7 @@ import RichTextEditorSheet from './RichTextEditorSheet';
 
 // 6. Utils
 import { buildPreviewAuthRevision, buildLocalizedSlugPath, buildLocalizedDynamicPageUrl } from '@/lib/page-utils';
+import { exitPreviewOnEscape } from '@/lib/preview-shortcuts';
 import { getTranslationValue, applyCmsTranslations, extractLayerTranslatableItemsShallow } from '@/lib/localisation-utils';
 import { cn } from '@/lib/utils';
 import { getCollectionVariable, canDeleteLayer, findLayerById, findParentCollectionLayer, canLayerHaveLink, updateLayerProps, removeRichTextSublayer, isRichTextLayer, getLayerCmsFieldBinding, INLINE_STYLE_KEYS } from '@/lib/layer-utils';
@@ -2111,6 +2112,35 @@ const CenterCanvas = React.memo(function CenterCanvas({
       previewObserverRef.current = null;
     };
   }, [isPreviewMode, previewUrl, previewAuthRevision]);
+
+  // Keys pressed inside the preview iframe don't bubble to the builder window
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!isPreviewMode || !iframe) return;
+
+    let iframeDoc: Document | null = null;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (iframeDoc) exitPreviewOnEscape(e, iframeDoc);
+    };
+
+    const attach = () => {
+      try {
+        iframeDoc = iframe.contentDocument;
+        iframeDoc?.addEventListener('keydown', handleKeyDown);
+      } catch {
+        iframeDoc = null; // Cross-origin iframe
+      }
+    };
+
+    iframe.addEventListener('load', attach);
+    if (iframe.contentDocument?.readyState === 'complete') attach();
+
+    return () => {
+      iframe.removeEventListener('load', attach);
+      iframeDoc?.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isPreviewMode]);
 
   // Autofit when entering preview mode (not on every breakpoint change)
   const prevIsPreviewMode = useRef(false);
