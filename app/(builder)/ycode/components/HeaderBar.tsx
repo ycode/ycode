@@ -33,6 +33,7 @@ import ActiveUsersInHeader from './ActiveUsersInHeader';
 import InviteUserButton from './InviteUserButton';
 import { LocaleSelector } from './LocaleSelector';
 import PublishPopover from './PublishPopover';
+import SaveStatusButton from './SaveStatusButton';
 import { Label } from '@/components/ui/label';
 import Icon from '@/components/ui/icon';
 import { Separator } from '@/components/ui/separator';
@@ -51,7 +52,6 @@ interface HeaderBarProps {
   setCurrentPageId: (id: string) => void;
   isSaving: boolean;
   hasUnsavedChanges: boolean;
-  lastSaved: Date | null;
   isPublishing: boolean;
   setIsPublishing: (isPublishing: boolean) => void;
   saveImmediately: (pageId: string) => Promise<void>;
@@ -72,7 +72,6 @@ export default function HeaderBar({
   setCurrentPageId,
   isSaving,
   hasUnsavedChanges,
-  lastSaved,
   isPublishing,
   setIsPublishing,
   saveImmediately,
@@ -88,6 +87,7 @@ export default function HeaderBar({
   const editorSidebarTab = useEditorStore((s) => s.activeSidebarTab);
   const currentPageCollectionItemId = useEditorStore((s) => s.currentPageCollectionItemId);
   const storeCurrentPageId = useEditorStore((s) => s.currentPageId);
+  const editingComponentId = useEditorStore((s) => s.editingComponentId);
   const isPreviewMode = useEditorStore((s) => s.isPreviewMode);
   const setPreviewMode = useEditorStore((s) => s.setPreviewMode);
   const openFileManager = useEditorStore((s) => s.openFileManager);
@@ -346,6 +346,18 @@ export default function HeaderBar({
     setPreviewReturn,
     updateQueryParams,
   ]);
+
+  // Component edits save automatically through the store, so only pages can be saved manually
+  const canSaveManually = !!currentPageId && !editingComponentId;
+
+  const handleSave = useCallback(async () => {
+    if (!currentPageId) return;
+    try {
+      await saveImmediately(currentPageId);
+    } catch (error) {
+      console.error('Failed to save page:', error);
+    }
+  }, [currentPageId, saveImmediately]);
 
   // Listen for the ⌘P shortcut dispatched from the global keyboard handler
   useEffect(() => {
@@ -663,28 +675,12 @@ export default function HeaderBar({
         {/* Invite User */}
         {canManageMembers && <InviteUserButton />}
 
-        {/* Save Status Indicator */}
-        <div className="flex items-center justify-end w-16 text-xs text-zinc-500 dark:text-white/50">
-          {isSaving ? (
-            <>
-              <span>Saving</span>
-            </>
-          ) : hasUnsavedChanges ? (
-            <>
-              <span>Unsaved</span>
-            </>
-          ) : lastSaved ? (
-            <>
-              <span>Saved</span>
-            </>
-          ) : (
-            <>
-              <span>Ready</span>
-            </>
-          )}
-        </div>
+        <SaveStatusButton
+          isSaving={isSaving}
+          hasUnsavedChanges={hasUnsavedChanges}
+          onSave={canSaveManually ? handleSave : undefined}
+        />
 
-        {/* Preview button */}
         <Button
           size="sm"
           variant="secondary"
@@ -692,7 +688,7 @@ export default function HeaderBar({
           disabled={!currentPage || isSaving}
           className={isPreviewMode ? 'bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90' : ''}
         >
-          <Icon name="preview" />
+          Preview
         </Button>
 
         <PublishPopover

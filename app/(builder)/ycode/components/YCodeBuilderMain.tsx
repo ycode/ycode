@@ -88,6 +88,7 @@ import type { ExternalPastePlacement } from '@/stores/useExternalPasteStore';
 
 // 6. Utils/lib
 import { findHomepage } from '@/lib/page-utils';
+import { exitPreviewOnEscape } from '@/lib/preview-shortcuts';
 import { hasTextSelection } from '@/lib/utils';
 import { getStyleIds } from '@/lib/layer-style-resolve';
 import { findLayerById, getClassesString, removeLayerById, canCopyLayer, canDeleteLayer, regenerateIdsWithInteractionRemapping, findParentAndIndex, insertLayerAfter, updateLayerProps, getLayerIndexes, removeRichTextSublayer, canPasteIntoParent, canHaveChildren, LINK_NESTING_ERROR } from '@/lib/layer-utils';
@@ -199,7 +200,6 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
   const migrationsComplete = useMigrationStore((state) => state.migrationsComplete);
   const setMigrationsComplete = useMigrationStore((state) => state.setMigrationsComplete);
   const [isSaving, setIsSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [showPageDropdown, setShowPageDropdown] = useState(false);
@@ -1246,7 +1246,6 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
     setHasUnsavedChanges(false);
     try {
       await saveDraft(pageId);
-      setLastSaved(new Date());
     } catch (error) {
       console.error('Save failed:', error);
       setHasUnsavedChanges(true);
@@ -1269,7 +1268,6 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
       setHasUnsavedChanges(false);
       try {
         await saveDraft(pageId);
-        setLastSaved(new Date());
       } catch (error) {
         console.error('Autosave failed:', error);
         setHasUnsavedChanges(true); // Restore unsaved flag on error
@@ -1595,6 +1593,12 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
       if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
         e.preventDefault(); // Prevent the browser print dialog
         window.dispatchEvent(new CustomEvent('togglePreview'));
+        return;
+      }
+
+      // Escape - Exit preview, instead of selecting the parent layer behind it
+      if (e.key === 'Escape' && useEditorStore.getState().isPreviewMode) {
+        exitPreviewOnEscape(e);
         return;
       }
 
@@ -2294,7 +2298,6 @@ export default function YCodeBuilder({ children }: YCodeBuilderProps = {} as YCo
         setCurrentPageId={routeType === 'settings' || routeType === 'profile' || routeType === 'forms' || routeType === 'integrations' ? () => {} : setCurrentPageId}
         isSaving={routeType === 'settings' || routeType === 'localization' || routeType === 'profile' || routeType === 'forms' || routeType === 'integrations' ? false : isCurrentlySaving}
         hasUnsavedChanges={routeType === 'settings' || routeType === 'localization' || routeType === 'profile' || routeType === 'forms' || routeType === 'integrations' ? false : hasUnsavedChanges}
-        lastSaved={routeType === 'settings' || routeType === 'localization' || routeType === 'profile' || routeType === 'forms' || routeType === 'integrations' ? null : lastSaved}
         isPublishing={isPublishing}
         setIsPublishing={setIsPublishing}
         saveImmediately={routeType === 'settings' || routeType === 'localization' || routeType === 'profile' || routeType === 'forms' || routeType === 'integrations' ? async () => {} : saveImmediately}
