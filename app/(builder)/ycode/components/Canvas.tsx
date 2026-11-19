@@ -649,6 +649,8 @@ const Canvas = React.memo(function Canvas({
   // builds), so it would leave layers unstyled ("black and white") until
   // publish. Injecting the precompiled CSS gives a reliable baseline; the CDN
   // still layers on top for live single-property edits made in the builder.
+  // It goes first in <head> so the CDN sheet wins ties: a live `max-lg:` edit
+  // must beat the precompiled base class the element still carries.
   // Skipped while editing a component (no page draft is bound to the canvas).
   const generatedCss = usePagesStore((state) =>
     pageId && !editingComponentId ? state.draftsByPageId[pageId]?.generated_css ?? '' : ''
@@ -668,7 +670,7 @@ const Canvas = React.memo(function Canvas({
     if (!styleEl) {
       styleEl = iframeDoc.createElement('style');
       styleEl.id = STYLE_ID;
-      iframeDoc.head.appendChild(styleEl);
+      iframeDoc.head.prepend(styleEl);
     }
     styleEl.textContent = generatedCss;
   }, [iframeReady, generatedCss]);
