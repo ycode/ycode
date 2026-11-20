@@ -7,8 +7,21 @@ import {
   createComponent,
   updateComponent,
   updateComponentFolder,
+  renameComponentFolder,
   softDeleteComponent,
 } from '@/lib/repositories/componentRepository';
+import { getSettingByKey, setSetting } from '@/lib/repositories/settingsRepository';
+import {
+  COMPONENT_FOLDER_ORDER_SETTING,
+  DEFAULT_COMPONENT_FOLDER,
+  getComponentFolderKey,
+  getComponentFolderNames,
+  groupComponentsByFolder,
+  normalizeComponentFolder,
+  parseComponentFolderOrder,
+  renameComponentFolderInOrder,
+  reorderComponentFolders,
+} from '@/lib/component-folder-utils';
 import {
   findLayerById,
   updateLayerById,
@@ -801,6 +814,101 @@ EXAMPLE: A "Card" component with a title variable:
             message: `Component "${component.name}" updated`,
             variables: component.variables || [],
           }),
+        }],
+      };
+    },
+  );
+
+  server.tool(
+    'rename_component_folder',
+    `Rename a builder component folder, moving every component in it. Renaming to an existing folder
+merges the two. Pass to: null to remove the folder (its components move to the default
+"Components" folder). Folders are builder-only and never affect the published site.
+To move a single component, use update_component's folder instead.`,
+    {
+      from: z.string().describe('Current folder name (see folder in list_components)'),
+      to: z.string().nullable().describe('New folder name, or null to remove the folder'),
+    },
+    async ({ from, to }) => {
+      const fromFolder = normalizeComponentFolder(from);
+      if (!fromFolder) {
+        return {
+          content: [{ type: 'text' as const, text: `Error: The default "${DEFAULT_COMPONENT_FOLDER}" folder cannot be renamed.` }],
+          isError: true,
+        };
+      }
+
+      const toFolder = normalizeComponentFolder(to);
+      const movedIds = await renameComponentFolder(fromFolder, toFolder);
+      if (movedIds.length === 0) {
+        const folders = getComponentFolderNames(await getAllComponents(false));
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Error: No folder named "${fromFolder}". Existing folders: ${folders.length ? folders.join(', ') : 'none'}.`,
+          }],
+          isError: true,
+        };
+      }
+
+      const storedOrder = parseComponentFolderOrder(await getSettingByKey(COMPONENT_FOLDER_ORDER_SETTING));
+      const nextOrder = renameComponentFolderInOrder(storedOrder, fromFolder, toFolder);
+      if (nextOrder !== storedOrder) {
+        await setSetting(COMPONENT_FOLDER_ORDER_SETTING, nextOrder);
+      }
+
+      for (const id of movedIds) {
+        broadcastComponentUpdated(id, { folder: toFolder }).catch(() => {});
+      }
+
+      const destination = toFolder ?? DEFAULT_COMPONENT_FOLDER;
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            message: `Moved ${movedIds.length} component(s) from "${fromFolder}" to "${destination}"`,
+            folder: toFolder,
+            component_ids: movedIds,
+          }),
+        }],
+      };
+    },
+  );
+
+  server.tool(
+    'reorder_component_folders',
+    `Set the order of component folders in the builder's component library. List folder names in the
+desired order; use "${DEFAULT_COMPONENT_FOLDER}" for the default folder. Folders you leave out keep
+their current relative order after the listed ones. Builder-only, never affects the published site.`,
+    {
+      folders: z.array(z.string()).min(1).describe('Folder names in display order (see folder in list_components)'),
+    },
+    async ({ folders }) => {
+      const [components, storedValue] = await Promise.all([
+        getAllComponents(false),
+        getSettingByKey(COMPONENT_FOLDER_ORDER_SETTING),
+      ]);
+      const storedOrder = parseComponentFolderOrder(storedValue);
+      const folderKeys = groupComponentsByFolder(components, storedOrder)
+        .map((group) => getComponentFolderKey(group.folder));
+
+      const { order, unknown } = reorderComponentFolders(folderKeys, folders);
+      if (unknown.length > 0) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Error: Unknown folder(s): ${unknown.join(', ')}. Existing folders: ${folderKeys.join(', ')}.`,
+          }],
+          isError: true,
+        };
+      }
+
+      await setSetting(COMPONENT_FOLDER_ORDER_SETTING, order);
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ message: 'Component folders reordered', order }),
         }],
       };
     },

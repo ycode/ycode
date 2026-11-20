@@ -941,13 +941,13 @@ export async function updateComponentFolder(
 /**
  * Rename a folder on every draft component in it. Passing null as the new
  * name removes the folder (its components move to the default folder).
- * Returns the number of components moved.
+ * Returns the ids of the components moved.
  */
 export async function renameComponentFolder(
   fromFolder: string,
   toFolder: string | null,
   tenantId?: string
-): Promise<number> {
+): Promise<string[]> {
   const from = normalizeComponentFolder(fromFolder);
   if (!from) {
     throw new Error('The default folder cannot be renamed');
@@ -969,7 +969,7 @@ export async function renameComponentFolder(
     throw new Error(`Failed to rename component folder: ${error.message}`);
   }
 
-  return data?.length ?? 0;
+  return (data ?? []).map((row) => row.id);
 }
 
 /**

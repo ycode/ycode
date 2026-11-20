@@ -130,6 +130,35 @@ export function moveComponentFolder(
 }
 
 /**
+ * Build the folder order to store from a requested order. Requested names are
+ * normalized (any casing of "Components" is the default folder) and deduped;
+ * folders left out keep their current relative position after the listed ones.
+ * Names that match no folder in `folderKeys` are returned in `unknown`.
+ */
+export function reorderComponentFolders(
+  folderKeys: string[],
+  requested: string[]
+): { order: string[]; unknown: string[] } {
+  const known = new Set([...folderKeys, DEFAULT_COMPONENT_FOLDER]);
+  const listed: string[] = [];
+  const unknown: string[] = [];
+
+  for (const name of requested) {
+    const key = getComponentFolderKey(normalizeComponentFolder(name));
+    if (!known.has(key)) {
+      unknown.push(name);
+    } else if (!listed.includes(key)) {
+      listed.push(key);
+    }
+  }
+
+  return {
+    order: [...listed, ...folderKeys.filter((key) => !listed.includes(key))],
+    unknown,
+  };
+}
+
+/**
  * Update a stored folder order after renaming `from` to `to` (null removes the
  * folder into the default one). Merging into a listed folder keeps its position.
  */
