@@ -145,6 +145,8 @@ export const TOOL_META: Record<string, ToolMeta> = {
   create_component_from_layer: write('Create component from layer'),
   create_component: write('Create component'),
   update_component: write('Update component'),
+  rename_component_folder: write('Rename component folder'),
+  reorder_component_folders: write('Reorder component folders'),
   list_component_variants: read('List component variants'),
   create_component_variant: write('Create component variant'),
   update_component_variant: write('Update component variant'),
