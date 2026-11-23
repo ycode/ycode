@@ -1,7 +1,7 @@
 import { getSupabaseAdmin, getTenantIdFromHeaders } from '@/lib/supabase-server';
 import { getKnexClient } from '@/lib/knex-client';
 import { SUPABASE_IN_FILTER_CHUNK_SIZE, SUPABASE_QUERY_LIMIT, SUPABASE_WRITE_BATCH_SIZE } from '@/lib/supabase-constants';
-import type { CollectionField, CollectionItem, CollectionItemWithValues } from '@/types';
+import type { CollectionField, CollectionFieldType, CollectionItem, CollectionItemWithValues } from '@/types';
 import { randomUUID } from 'crypto';
 import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepository';
 import { getValuesByFieldId, getValuesByItemIds, getValuesByItemId, getValueRowsForItems } from '@/lib/repositories/collectionItemValueRepository';
@@ -556,48 +556,74 @@ export async function getItemsByIds(ids: string[], isPublished: boolean = false,
  * @param is_published - Get draft (false) or published (true) values. Defaults to false (draft).
  */
 export async function getItemWithValues(id: string, is_published: boolean = false, tenantId?: string): Promise<CollectionItemWithValues | null> {
+  // Values are fetched alongside the item (deleted ones included) and filtered
+  // once the item's own deleted state is known, saving a round trip.
+  const [item, rows] = await Promise.all([
+    getItemById(id, is_published, tenantId),
+    fetchItemValueRows(id, is_published, true, tenantId),
+  ]);
+  if (!item) return null;
+
+  // A deleted item keeps its deleted values (to show its name in the UI)
+  return {
+    ...item,
+    values: castItemValueRows(item.deleted_at ? rows : rows.filter(row => !row.deleted_at)),
+  };
+}
+
+/**
+ * Get an item's non-deleted field values as `{ field_id: value }`, cast by field type
+ * @param id - Item UUID
+ * @param is_published - Get draft (false) or published (true) values
+ */
+export async function getItemValues(id: string, is_published: boolean = false, tenantId?: string): Promise<Record<string, any>> {
+  return castItemValueRows(await fetchItemValueRows(id, is_published, false, tenantId));
+}
+
+interface ItemValueRow {
+  value: string | null;
+  field_id: string | null;
+  deleted_at: string | null;
+  collection_fields: { type?: string } | null;
+}
+
+async function fetchItemValueRows(
+  id: string,
+  is_published: boolean,
+  includeDeleted: boolean,
+  tenantId?: string
+): Promise<ItemValueRow[]> {
   const client = await getSupabaseAdmin(tenantId);
 
   if (!client) {
     throw new Error('Supabase client not configured');
   }
 
-  // Get the item
-  const item = await getItemById(id, is_published, tenantId);
-  if (!item) return null;
-
-  // Build query for values with field type info
-  let valuesQuery = client
+  let query = client
     .from('collection_item_values')
-    .select('value, field_id, collection_fields!inner(type)')
+    .select('value, field_id, deleted_at, collection_fields!inner(type)')
     .eq('item_id', id)
     .eq('is_published', is_published);
+  if (!includeDeleted) query = query.is('deleted_at', null);
 
-  // If the item itself is deleted, include deleted values (to show name in UI)
-  // Otherwise, exclude deleted values
-  if (!item.deleted_at) {
-    valuesQuery = valuesQuery.is('deleted_at', null);
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`Failed to fetch item values: ${error.message}`);
   }
 
-  const { data: valuesData, error: valuesError } = await valuesQuery;
+  return (data || []) as unknown as ItemValueRow[];
+}
 
-  if (valuesError) {
-    throw new Error(`Failed to fetch item values: ${valuesError.message}`);
-  }
-
-  // Transform to { field_id: value } object, casting values by type
+/** Transform value rows to a `{ field_id: value }` object, casting values by type */
+function castItemValueRows(rows: ItemValueRow[]): Record<string, any> {
   const values: Record<string, any> = {};
-  valuesData?.forEach((row: any) => {
+  for (const row of rows) {
     if (row.field_id) {
-      const fieldType = row.collection_fields?.type;
-      values[row.field_id] = castValue(row.value, fieldType || 'text');
+      values[row.field_id] = castValue(row.value, (row.collection_fields?.type || 'text') as CollectionFieldType);
     }
-  });
-
-  return {
-    ...item,
-    values,
-  };
+  }
+  return values;
 }
 
 /**

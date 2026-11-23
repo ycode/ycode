@@ -123,6 +123,9 @@ export function normalizeSlugSegment(slug: string | null | undefined): string {
   return (slug ?? '').replace(/^\/+|\/+$/g, '');
 }
 
+/** Page fields that determine its URL */
+export type PageRouteFields = Pick<Page, 'id' | 'slug' | 'page_folder_id' | 'is_index' | 'is_dynamic'>;
+
 /**
  * Build the full slug path for a page or folder
  * Returns the full URL path starting with "/"
@@ -133,7 +136,7 @@ export function normalizeSlugSegment(slug: string | null | undefined): string {
  * buildSlugPath(folder, folders) // "/products"
  */
 export function buildSlugPath(
-  item: Page | PageFolder | null,
+  item: PageRouteFields | PageFolder | null,
   allFolders: PageFolder[],
   itemType: 'page' | 'folder',
   slugFieldKey: string = '{slug}'
@@ -472,7 +475,7 @@ export function detectLocaleFromPath(
  */
 export function matchPageWithTranslatedSlugs(
   urlPath: string,
-  page: Page,
+  page: PageRouteFields,
   allFolders: PageFolder[],
   translations: Record<string, Translation> | undefined
 ): boolean {
@@ -514,7 +517,7 @@ export function matchPageWithTranslatedSlugs(
  */
 export function matchDynamicPageWithTranslatedSlugs(
   urlPath: string,
-  page: Page,
+  page: PageRouteFields,
   allFolders: PageFolder[],
   translations: Record<string, Translation> | undefined
 ): string | null {
