@@ -99,7 +99,19 @@ export async function getTranslationsByLocale(
 const SLUG_CONTENT_KEYS = ['slug', 'field:key:slug'];
 
 /** Source types whose translations are small and always needed per render. */
-const NON_CMS_SOURCE_TYPES = ['page', 'folder', 'component'];
+const SHARED_SOURCE_TYPES = ['folder', 'component'];
+
+type TranslationPageQuery = (from: number, to: number) => PromiseLike<{ data: Translation[] | null; error: { message: string } | null }>;
+
+/** Page through a translations query, wrapping PostgREST errors in an `Error`. */
+async function fetchTranslationRows(buildPage: TranslationPageQuery): Promise<Translation[]> {
+  try {
+    return await fetchAllRows<Translation>(buildPage);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : (error as { message?: string })?.message;
+    throw new Error(`Failed to fetch translations: ${message ?? String(error)}`);
+  }
+}
 
 /** Supabase caps `.in()` lists; chunk large id arrays to stay under it. */
 const IN_CHUNK_SIZE = 300;
@@ -111,13 +123,14 @@ function chunkIds(ids: string[], size: number): string[][] {
 }
 
 /**
- * Load the per-locale translation "scaffold": every non-CMS translation
- * (page / folder / component) plus only the CMS *slug* rows.
+ * Load the per-locale translation "scaffold": folder and component rows plus
+ * the *slug* rows of every page and CMS item.
  *
- * This is everything needed for routing, page/component rendering, SEO and
- * URL generation — but excludes the bulk CMS *content* translations (text /
- * rich text), which dominate large catalogues and are loaded on demand per
- * rendered item via {@link getCmsTranslationsForItems}.
+ * This is everything needed for routing, component rendering and URL
+ * generation. Page content rows (text, SEO, custom code) are loaded for the
+ * rendered page only via {@link getPageTranslationsForLocale}, and CMS content
+ * per rendered item via {@link getCmsTranslationsForItems}; both dominate
+ * large multilingual sites.
  */
 export async function getLocaleScaffoldTranslations(
   localeId: string,
@@ -130,51 +143,60 @@ export async function getLocaleScaffoldTranslations(
     throw new Error('Supabase not configured');
   }
 
-  const PAGE_SIZE = 1000;
-  const results: Translation[] = [];
+  const baseQuery = () => client
+    .from('translations')
+    .select('*')
+    .eq('locale_id', localeId)
+    .eq('is_published', isPublished)
+    .is('deleted_at', null);
 
-  const pageThrough = async (
-    build: (from: number, to: number) => PromiseLike<{ data: Translation[] | null; error: { message: string } | null }>,
-  ) => {
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { data, error } = await build(from, from + PAGE_SIZE - 1);
-      if (error) throw new Error(`Failed to fetch translations: ${error.message}`);
-      if (!data || data.length === 0) break;
-      results.push(...(data as Translation[]));
-      if (data.length < PAGE_SIZE) break;
-    }
-  };
-
-  // Non-CMS rows (page / folder / component).
-  await pageThrough((from, to) =>
-    client
-      .from('translations')
-      .select('*')
-      .eq('locale_id', localeId)
-      .eq('is_published', isPublished)
-      .is('deleted_at', null)
-      .in('source_type', NON_CMS_SOURCE_TYPES)
-      .order('created_at', { ascending: true })
+  const [sharedRows, pageSlugRows, cmsSlugRows] = await Promise.all([
+    fetchTranslationRows((from, to) => baseQuery()
+      .in('source_type', SHARED_SOURCE_TYPES)
       .order('id', { ascending: true })
-      .range(from, to) as unknown as PromiseLike<{ data: Translation[] | null; error: { message: string } | null }>,
-  );
-
-  // CMS slug rows (needed to match/build localized dynamic-page URLs).
-  await pageThrough((from, to) =>
-    client
-      .from('translations')
-      .select('*')
-      .eq('locale_id', localeId)
-      .eq('is_published', isPublished)
-      .is('deleted_at', null)
+      .range(from, to) as unknown as ReturnType<TranslationPageQuery>),
+    fetchTranslationRows((from, to) => baseQuery()
+      .eq('source_type', 'page')
+      .eq('content_key', 'slug')
+      .order('id', { ascending: true })
+      .range(from, to) as unknown as ReturnType<TranslationPageQuery>),
+    // CMS slug rows (needed to match/build localized dynamic-page URLs).
+    fetchTranslationRows((from, to) => baseQuery()
       .eq('source_type', 'cms')
       .in('content_key', SLUG_CONTENT_KEYS)
-      .order('created_at', { ascending: true })
       .order('id', { ascending: true })
-      .range(from, to) as unknown as PromiseLike<{ data: Translation[] | null; error: { message: string } | null }>,
-  );
+      .range(from, to) as unknown as ReturnType<TranslationPageQuery>),
+  ]);
 
-  return results;
+  return [...sharedRows, ...pageSlugRows, ...cmsSlugRows];
+}
+
+/**
+ * Load every translation of one page in a locale (layer text, SEO, custom
+ * code), to complete the scaffold for the page being rendered.
+ */
+export async function getPageTranslationsForLocale(
+  localeId: string,
+  isPublished: boolean,
+  pageId: string,
+  tenantId?: string,
+): Promise<Translation[]> {
+  const client = await getSupabaseAdmin(tenantId);
+
+  if (!client) {
+    throw new Error('Supabase not configured');
+  }
+
+  return fetchTranslationRows((from, to) => client
+    .from('translations')
+    .select('*')
+    .eq('locale_id', localeId)
+    .eq('is_published', isPublished)
+    .is('deleted_at', null)
+    .eq('source_type', 'page')
+    .eq('source_id', pageId)
+    .order('id', { ascending: true })
+    .range(from, to) as unknown as ReturnType<TranslationPageQuery>);
 }
 
 /**

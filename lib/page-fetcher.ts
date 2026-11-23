@@ -7,7 +7,7 @@ import { getItemWithValues, getItemsWithValuesByIds, getItemIdsByFieldValue, get
 import { getValuesByItemIds } from '@/lib/repositories/collectionItemValueRepository';
 import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepository';
 import { enrichItemsWithCountValues } from '@/lib/repositories/collectionCountRepository';
-import { getLocaleScaffoldTranslations, getCmsTranslationsForItems } from '@/lib/repositories/translationRepository';
+import { getLocaleScaffoldTranslations, getCmsTranslationsForItems, getPageTranslationsForLocale } from '@/lib/repositories/translationRepository';
 import { getTranslatableKey, slimTranslations, translatePageCustomCode } from '@/lib/locale-runtime';
 import type { Page, PageFolder, PageLayers, Component, ComponentVariable, CollectionItemWithValues, CollectionField, Layer, CollectionPaginationMeta, Translation, Locale } from '@/types';
 import { getCollectionVariable, getClassesString, resolveFieldValue, evaluateVisibility, evaluateCondition, getLayerHtmlTag, filterDisabledSliderLayers, applyCustomAttributesToHtml } from '@/lib/layer-utils';
@@ -274,12 +274,11 @@ export async function loadTranslationsForLocale(
       return { locale: null, translations: {} };
     }
 
-    // Load the per-locale "scaffold" only: page/folder/component translations
-    // plus CMS *slug* rows. This covers routing, SEO, page/component rendering
-    // and URL generation. The bulk CMS *content* translations (text/rich text)
-    // — which dominate large catalogues and previously made every render fetch
-    // the entire locale catalogue — are loaded on demand per rendered item via
-    // `ensureCmsTranslations`.
+    // Load the per-locale "scaffold" only: folder/component translations plus
+    // page and CMS *slug* rows. This covers routing, component rendering and
+    // URL generation. Page content (text, SEO, custom code) and CMS content
+    // dominate large multilingual sites, so they are loaded on demand for the
+    // rendered page (`ensurePageTranslations`) and items (`ensureCmsTranslations`).
     const scaffold = await getLocaleScaffoldTranslations(locale.id, isPublished, tenantId);
 
     const translationsMap: Record<string, Translation> = {};
@@ -315,6 +314,7 @@ interface TranslationLoadContext {
   // In-flight loads keyed by item id. Concurrent resolutions of the same item
   // await the same fetch instead of skipping it before rows are merged.
   inFlight: Map<string, Promise<void>>;
+  pageLoads: Map<string, Promise<void>>;
 }
 
 const translationLoadContexts = new WeakMap<object, TranslationLoadContext>();
@@ -332,7 +332,38 @@ function registerTranslationContext(
     tenantId,
     loadedItemIds: new Set(),
     inFlight: new Map(),
+    pageLoads: new Map(),
   });
+}
+
+/**
+ * Ensure the content translations of `pageId` (layer text, SEO, custom code)
+ * are merged into a scaffold map from `loadTranslationsForLocale`. Concurrent
+ * callers for the same page share one fetch. No-op without a registered context.
+ */
+export async function ensurePageTranslations(
+  translations: Record<string, Translation> | null | undefined,
+  pageId: string | null | undefined,
+): Promise<void> {
+  if (!translations || !pageId) return;
+  const ctx = translationLoadContexts.get(translations);
+  if (!ctx) return;
+
+  let load = ctx.pageLoads.get(pageId);
+  if (!load) {
+    load = getPageTranslationsForLocale(ctx.localeId, ctx.isPublished, pageId, ctx.tenantId)
+      .then((rows) => {
+        for (const row of rows) {
+          translations[getTranslatableKey(row)] = row;
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to load page translations:', error);
+      });
+    ctx.pageLoads.set(pageId, load);
+  }
+
+  await load;
 }
 
 /**
@@ -656,6 +687,7 @@ async function fetchPageByPathInternal(
 
             // Found the matching dynamic page
             matchingPage = dynamicPage;
+            const pageTranslationsLoad = ensurePageTranslations(translations, dynamicPage.id);
 
             // Metadata-only mode: skip heavy layer/component resolution
             if (!resolveLayers) {
@@ -676,6 +708,7 @@ async function fetchPageByPathInternal(
                 values: enhancedItemValues,
               };
 
+              await pageTranslationsLoad;
               return {
                 page: matchingPage,
                 pageLayers: { layers: [] } as any,
@@ -689,15 +722,18 @@ async function fetchPageByPathInternal(
             }
 
             // Get layers for the dynamic page
-            const { data: pageLayers, error: layersError } = await supabase
-              .from('page_layers')
-              .select('*')
-              .eq('page_id', matchingPage.id)
-              .eq('is_published', isPublished)
-              .is('deleted_at', null)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .single();
+            const [{ data: pageLayers, error: layersError }] = await Promise.all([
+              supabase
+                .from('page_layers')
+                .select('*')
+                .eq('page_id', matchingPage.id)
+                .eq('is_published', isPublished)
+                .is('deleted_at', null)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single(),
+              pageTranslationsLoad,
+            ]);
 
             if (layersError) {
               console.error(`Failed to fetch ${isPublished ? 'published' : 'draft'} layers:`, layersError);
@@ -841,7 +877,10 @@ async function fetchPageByPathInternal(
     }
 
     // Handle non-dynamic page (exact match)
+    const pageTranslationsLoad = ensurePageTranslations(translations, matchingPage.id);
+
     if (!resolveLayers) {
+      await pageTranslationsLoad;
       return {
         page: matchingPage,
         pageLayers: { layers: [] } as any,
@@ -853,15 +892,18 @@ async function fetchPageByPathInternal(
     }
 
     // Get layers for the matched page
-    const { data: pageLayers, error: layersError } = await supabase
-      .from('page_layers')
-      .select('*')
-      .eq('page_id', matchingPage.id)
-      .eq('is_published', isPublished)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    const [{ data: pageLayers, error: layersError }] = await Promise.all([
+      supabase
+        .from('page_layers')
+        .select('*')
+        .eq('page_id', matchingPage.id)
+        .eq('is_published', isPublished)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single(),
+      pageTranslationsLoad,
+    ]);
 
     if (layersError) {
       console.error(`Failed to fetch ${isPublished ? 'published' : 'draft'} layers:`, layersError);
@@ -1013,6 +1055,7 @@ export async function fetchErrorPage(
     const { locale, translations } = localeCode
       ? await loadTranslationsForLocale(localeCode, isPublished, tenantId)
       : { locale: null, translations: {} as Record<string, Translation> };
+    await ensurePageTranslations(translations, errorPage.id);
     const pageTranslations = locale && Object.keys(translations).length > 0 ? translations : undefined;
     const translationOptions = { includeIncomplete: !isPublished };
 
@@ -1103,15 +1146,18 @@ export const fetchHomepage = cache(async function fetchHomepage(
     const components = componentsResult;
 
     // Get layers for homepage (depends on homepage.id)
-    const { data: pageLayers, error: layersError } = await supabase
-      .from('page_layers')
-      .select('*')
-      .eq('page_id', homepage.id)
-      .eq('is_published', isPublished)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    const [{ data: pageLayers, error: layersError }] = await Promise.all([
+      supabase
+        .from('page_layers')
+        .select('*')
+        .eq('page_id', homepage.id)
+        .eq('is_published', isPublished)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single(),
+      ensurePageTranslations(translations, homepage.id),
+    ]);
 
     if (layersError) {
       return null;
