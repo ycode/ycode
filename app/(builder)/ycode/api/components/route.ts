@@ -60,8 +60,8 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: 'Missing required field: from' }, { status: 400 });
       }
 
-      const count = await renameComponentFolder(body.from, body.to ?? null);
-      return NextResponse.json({ data: { count } });
+      const movedIds = await renameComponentFolder(body.from, body.to ?? null);
+      return NextResponse.json({ data: { count: movedIds.length } });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

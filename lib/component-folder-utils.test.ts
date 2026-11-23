@@ -8,6 +8,7 @@ import {
   moveComponentFolder,
   normalizeComponentFolder,
   renameComponentFolderInOrder,
+  reorderComponentFolders,
 } from './component-folder-utils';
 import type { Component } from '../types';
 
@@ -101,4 +102,17 @@ test('renameComponentFolderInOrder renames in place and merges into listed folde
   assert.deepEqual(renameComponentFolderInOrder(order, 'B', null), ['A', DEFAULT_COMPONENT_FOLDER]);
   assert.deepEqual(renameComponentFolderInOrder(['A'], 'A', null), [DEFAULT_COMPONENT_FOLDER]);
   assert.equal(renameComponentFolderInOrder(order, 'Missing', 'Z'), order);
+});
+
+test('reorderComponentFolders puts listed folders first and keeps the rest in place', () => {
+  const keys = [DEFAULT_COMPONENT_FOLDER, 'Cards', 'Footers', 'Navigation'];
+  assert.deepEqual(
+    reorderComponentFolders(keys, ['Navigation', 'components', 'Navigation']),
+    { order: ['Navigation', DEFAULT_COMPONENT_FOLDER, 'Cards', 'Footers'], unknown: [] }
+  );
+  assert.deepEqual(
+    reorderComponentFolders(['Cards', 'Footers'], ['Footers', DEFAULT_COMPONENT_FOLDER]),
+    { order: ['Footers', DEFAULT_COMPONENT_FOLDER, 'Cards'], unknown: [] }
+  );
+  assert.deepEqual(reorderComponentFolders(keys, ['Gone']).unknown, ['Gone']);
 });
