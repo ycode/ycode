@@ -119,9 +119,10 @@ export async function getComponentById(id: string, isPublished: boolean = false)
  */
 export async function getComponentsByIds(
   ids: string[],
-  isPublished: boolean = false
+  isPublished: boolean = false,
+  tenantId?: string
 ): Promise<Record<string, Component>> {
-  const client = await getSupabaseAdmin();
+  const client = await getSupabaseAdmin(tenantId);
   if (!client) {
     throw new Error('Failed to initialize Supabase client');
   }

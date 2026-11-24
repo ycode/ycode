@@ -66,6 +66,35 @@ export function collectComponentIds(layers: Layer[]): Set<string> {
   return ids;
 }
 
+/** `componentId` keys inside serialized JSON (e.g. rich text stored as a string), quotes escaped or not */
+const SERIALIZED_COMPONENT_ID = /componentId\\*"\s*:\s*\\*"([^"\\]+)/g;
+
+/**
+ * Collect every component ID referenced anywhere in a value: instance layers,
+ * overrides, variants, variable defaults and rich-text nodes (parsed or serialized).
+ */
+export function collectReferencedComponentIds(value: unknown, ids: Set<string> = new Set()): Set<string> {
+  if (typeof value === 'string') {
+    if (value.includes('componentId')) {
+      for (const match of value.matchAll(SERIALIZED_COMPONENT_ID)) ids.add(match[1]);
+    }
+    return ids;
+  }
+  if (!value || typeof value !== 'object') return ids;
+  if (Array.isArray(value)) {
+    for (const item of value) collectReferencedComponentIds(item, ids);
+    return ids;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'componentId' && typeof child === 'string') {
+      ids.add(child);
+    } else {
+      collectReferencedComponentIds(child, ids);
+    }
+  }
+  return ids;
+}
+
 /**
  * Build a dependency graph of components
  * Returns a map where key is componentId and value is set of componentIds it depends on
