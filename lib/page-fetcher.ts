@@ -1,25 +1,27 @@
 import { cache } from 'react';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { escapeHtml } from '@/lib/escape-html';
 import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { getKnexClient } from '@/lib/knex-client';
-import { buildSlugPath, buildDynamicPageUrl, buildLocalizedDynamicPageUrl, detectLocaleFromPath, matchPageWithTranslatedSlugs, matchDynamicPageWithTranslatedSlugs } from '@/lib/page-utils';
-import { getItemWithValues, getItemsWithValuesByIds, getItemIdsByFieldValue, getItemsByCollectionId, getSlugsByItemIds } from '@/lib/repositories/collectionItemRepository';
+import { buildSlugPath, buildDynamicPageUrl, buildLocalizedDynamicPageUrl, detectLocaleFromPath, matchPageWithTranslatedSlugs, matchDynamicPageWithTranslatedSlugs, type PageRouteFields } from '@/lib/page-utils';
+import { getItemWithValues, getItemValues, getItemsWithValuesByIds, getItemIdsByFieldValue, getItemsByCollectionId, getSlugsByItemIds } from '@/lib/repositories/collectionItemRepository';
 import { getValuesByItemIds } from '@/lib/repositories/collectionItemValueRepository';
 import { getFieldsByCollectionId } from '@/lib/repositories/collectionFieldRepository';
 import { enrichItemsWithCountValues } from '@/lib/repositories/collectionCountRepository';
 import { getLocaleScaffoldTranslations, getCmsTranslationsForItems, getPageTranslationsForLocale } from '@/lib/repositories/translationRepository';
 import { getTranslatableKey, slimTranslations, translatePageCustomCode } from '@/lib/locale-runtime';
-import type { Page, PageFolder, PageLayers, Component, ComponentVariable, CollectionItemWithValues, CollectionField, Layer, CollectionPaginationMeta, Translation, Locale } from '@/types';
-import { getCollectionVariable, getClassesString, resolveFieldValue, evaluateVisibility, evaluateCondition, getLayerHtmlTag, filterDisabledSliderLayers, applyCustomAttributesToHtml } from '@/lib/layer-utils';
+import type { Page, PageFolder, PageLayers, PageSettings, Component, ComponentVariable, CollectionItemWithValues, CollectionField, Layer, CollectionPaginationMeta, Translation, Locale } from '@/types';
+import { getCollectionVariable, getClassesString, resolveFieldValue, evaluateVisibility, evaluateCondition, getLayerHtmlTag, filterDisabledSliderLayers, applyCustomAttributesToHtml, isTextContentLayer } from '@/lib/layer-utils';
 import { isFieldVariable, isAssetVariable, createDynamicTextVariable, createDynamicRichTextVariable, createAssetVariable, getDynamicTextContent, getVariableStringValue, getAssetId, resolveDesignStyles } from '@/lib/variable-utils';
 import { applyGridSpanBindings } from '@/lib/grid-span-binding-utils';
 import { buildImageSizes, generateImageSrcset, getOptimizedImageUrl, getAssetProxyUrl, DEFAULT_ASSETS, collectLayerAssetIds, resolveInlineSvgAssetSrc, parseImageDimension, getSvgAspectRatioStyle } from '@/lib/asset-utils';
 import { resolveComponents, applyComponentOverrides } from '@/lib/resolve-components';
+import { createOnDemandComponentList, ensureReferencedComponents } from '@/lib/page-component-loader';
 import { getComponentVariantLayers } from '@/lib/component-variant-utils';
-import { isTiptapDoc, hasBlockElementsWithResolver } from '@/lib/tiptap-utils';
+import { isTiptapDoc, hasBlockElementsWithResolver, RESTRICTIVE_BLOCK_TAGS, getRichTextLayout, type RichTextLayout } from '@/lib/tiptap-utils';
 import { castValue, parseMultiReferenceValue, remapLayerIdsForCollectionItem } from '@/lib/collection-utils';
 import { isValidUUID } from '@/lib/utils';
-import { DEFAULT_TEXT_STYLES } from '@/lib/text-format-utils';
+import { DEFAULT_TEXT_STYLES, flattenTiptapParagraphs, getTextStyleClasses } from '@/lib/text-format-utils';
 
 // Pagination context passed through to resolveCollectionLayers
 export interface PaginationContext {
@@ -247,12 +249,14 @@ function matchDynamicPagePattern(urlPath: string, patternPath: string): string |
  * Load translations for a locale from the database
  * @param localeCode - The locale code (e.g., "fr", "en")
  * @param isPublished - Whether to fetch published translations
+ * @param knownLocales - Already-fetched locales for this publish state, to skip the locale lookup
  * @returns Map of translations keyed by translatable key (source_type:source_id:content_key)
  */
 export async function loadTranslationsForLocale(
   localeCode: string,
   isPublished: boolean,
-  tenantId?: string
+  tenantId?: string,
+  knownLocales?: Locale[]
 ): Promise<{ locale: Locale | null; translations: Record<string, Translation> }> {
   try {
     const supabase = await getSupabaseAdmin(tenantId);
@@ -261,14 +265,15 @@ export async function loadTranslationsForLocale(
       return { locale: null, translations: {} };
     }
 
-    // Find the locale by code
-    const { data: locale } = await supabase
-      .from('locales')
-      .select('*')
-      .eq('code', localeCode)
-      .eq('is_published', isPublished)
-      .is('deleted_at', null)
-      .single();
+    const locale = knownLocales
+      ? knownLocales.find(l => l.code === localeCode) ?? null
+      : (await supabase
+        .from('locales')
+        .select('*')
+        .eq('code', localeCode)
+        .eq('is_published', isPublished)
+        .is('deleted_at', null)
+        .single()).data as Locale | null;
 
     if (!locale) {
       return { locale: null, translations: {} };
@@ -453,6 +458,25 @@ async function getCollectionItemBySlug(
       return null;
     }
 
+    // Verify the item belongs to the correct collection while its values load.
+    // On the public path also require is_publishable so unpublished items can't resolve.
+    const loadVerifiedItem = async (itemId: string): Promise<CollectionItemWithValues | null> => {
+      let itemQuery = supabase
+        .from('collection_items')
+        .select('*')
+        .eq('id', itemId)
+        .eq('collection_id', collectionId)
+        .eq('is_published', isPublished)
+        .is('deleted_at', null);
+      if (isPublished) itemQuery = itemQuery.eq('is_publishable', true);
+      const [{ data: item, error: itemError }, values] = await Promise.all([
+        itemQuery.single(),
+        getItemValues(itemId, isPublished, tenantId),
+      ]);
+      if (itemError || !item) return null;
+      return { ...item, values };
+    };
+
     // If locale and translations are provided, try to find item by translated slug first
     if (locale && translations && collectionFields) {
       const slugField = collectionFields.find(f => f.id === slugFieldId);
@@ -467,25 +491,9 @@ async function getCollectionItemBySlug(
         for (const [translationKey, translation] of Object.entries(translations)) {
           // Translation key format: cms:{itemId}:{contentKey}
           if (translation.content_value === slugValue && translationKey.endsWith(contentKey)) {
-            // Extract item ID from translation key
-            const itemId = translation.source_id;
-
-            // Verify this item belongs to the correct collection. On the public
-            // path also require is_publishable so unpublished items can't resolve.
-            let itemQuery = supabase
-              .from('collection_items')
-              .select('*')
-              .eq('id', itemId)
-              .eq('collection_id', collectionId)
-              .eq('is_published', isPublished)
-              .is('deleted_at', null);
-            if (isPublished) itemQuery = itemQuery.eq('is_publishable', true);
-            const { data: item, error: itemError } = await itemQuery.single();
-
-            if (!itemError && item) {
-              // Found the item via translation - return it with all values
-              return await getItemWithValues(item.id, isPublished);
-            }
+            // Found the item via translation - return it with all values
+            const item = await loadVerifiedItem(translation.source_id);
+            if (item) return item;
           }
         }
       }
@@ -506,24 +514,7 @@ async function getCollectionItemBySlug(
       return null;
     }
 
-    // Verify the item belongs to the correct collection. On the public path
-    // also require is_publishable so unpublished items can't resolve.
-    let itemQuery = supabase
-      .from('collection_items')
-      .select('*')
-      .eq('id', valueData.item_id)
-      .eq('collection_id', collectionId)
-      .eq('is_published', isPublished)
-      .is('deleted_at', null);
-    if (isPublished) itemQuery = itemQuery.eq('is_publishable', true);
-    const { data: item, error: itemError } = await itemQuery.single();
-
-    if (itemError || !item) {
-      return null;
-    }
-
-    // Fetch the item with all its values
-    return await getItemWithValues(item.id, isPublished);
+    return await loadVerifiedItem(valueData.item_id);
   } catch (error) {
     console.error('Failed to fetch collection item by slug:', error);
     return null;
@@ -555,16 +546,18 @@ async function fetchPageByPathInternal(
       return null;
     }
 
-    // Fetch shared page lookup data in parallel.
-    // Components/timezone are only needed when resolving layers.
-    const [{ data: availableLocales }, { data: pages }, { data: folders }, components, timezoneRaw] = await Promise.all([
+    // Fetch shared page lookup data in parallel. Pages are fetched slim for
+    // URL matching; the matched page's full row is loaded once it is known.
+    // Timezone also formats CMS dates in dynamic page metadata.
+    const [{ data: availableLocales }, pages, { data: folders }, timezoneRaw] = await Promise.all([
       supabase.from('locales').select('*').eq('is_published', isPublished).is('deleted_at', null),
-      supabase.from('pages').select('*').eq('is_published', isPublished).is('deleted_at', null),
+      fetchPageRoutes(supabase, isPublished),
       supabase.from('page_folders').select('*').eq('is_published', isPublished).is('deleted_at', null),
-      resolveLayers ? fetchComponents(supabase, isPublished) : Promise.resolve([] as Component[]),
-      resolveLayers ? getSettingByKey('timezone') : Promise.resolve('UTC'),
+      getSettingByKey('timezone'),
     ]);
     const timezone = (timezoneRaw as string | null) || 'UTC';
+    // Filled with only the components the rendered layers reference
+    const components = resolveLayers ? createOnDemandComponentList(isPublished, tenantId) : [];
 
     const validLocaleCodes = availableLocales?.map(l => l.code) || [];
     const localeDetection = detectLocaleFromPath(slugPath, validLocaleCodes);
@@ -577,7 +570,8 @@ async function fetchPageByPathInternal(
       const { locale, translations: trans } = await loadTranslationsForLocale(
         localeDetection.localeCode,
         isPublished,
-        tenantId
+        tenantId,
+        (availableLocales as Locale[] | null) ?? undefined
       );
       detectedLocale = locale;
       translations = trans;
@@ -623,7 +617,7 @@ async function fetchPageByPathInternal(
 
     // First, try to find an exact match (non-dynamic page)
     // Use translated slug matching if translations are available
-    let matchingPage = pages.find((page: Page) => {
+    const matchingRoute = pages.find((page) => {
       if (page.is_dynamic) return false; // Skip dynamic pages for exact match
 
       // If we have translations, match using translated slugs
@@ -637,9 +631,9 @@ async function fetchPageByPathInternal(
     });
 
     // If no exact match, try dynamic pages
-    if (!matchingPage) {
+    if (!matchingRoute) {
       // Find all dynamic pages and check if URL matches their pattern
-      const dynamicPages = pages.filter((page: Page) => page.is_dynamic);
+      const dynamicPages = pages.filter((page) => page.is_dynamic);
 
       for (const dynamicPage of dynamicPages) {
         let extractedSlug: string | null = null;
@@ -662,53 +656,58 @@ async function fetchPageByPathInternal(
           // Fetch the collection item by slug value (supports translated slugs)
           const cmsSettings = dynamicPage.settings?.cms;
           if (cmsSettings?.collection_id && cmsSettings?.slug_field_id) {
-            // Fetch collection fields (needed for translation key lookup and custom code placeholders)
-            const collectionFields = await getFieldsByCollectionId(
-              cmsSettings.collection_id,
-              isPublished,
-              { excludeComputed: true }
-            );
+            const { collection_id: collectionId, slug_field_id: slugFieldId } = cmsSettings;
+            const slugValue = extractedSlug;
 
-            const collectionItem = await getCollectionItemBySlug(
-              cmsSettings.collection_id,
-              cmsSettings.slug_field_id,
-              extractedSlug,
-              isPublished,
-              collectionFields,
-              detectedLocale,
-              translations,
-              tenantId
-            );
+            // Collection fields are needed for translated slug lookup (and custom
+            // code placeholders); without a locale they load alongside the item.
+            const fieldsLoad = getFieldsByCollectionId(collectionId, isPublished, { excludeComputed: true });
+            const itemLoad = detectedLocale && translations
+              ? fieldsLoad.then(fields => getCollectionItemBySlug(
+                collectionId, slugFieldId, slugValue, isPublished, fields, detectedLocale, translations, tenantId
+              ))
+              : getCollectionItemBySlug(collectionId, slugFieldId, slugValue, isPublished, undefined, null, undefined, tenantId);
+            const [collectionFields, collectionItem] = await Promise.all([fieldsLoad, itemLoad]);
 
             if (!collectionItem) {
               // Slug doesn't belong to this dynamic page's collection — try next
               continue;
             }
 
-            // Found the matching dynamic page
-            matchingPage = dynamicPage;
+            // Found the matching dynamic page. Everything below only depends on
+            // the page and the item, so it all loads in parallel.
+            const pageLoad = fetchPageRow(supabase, dynamicPage.id, isPublished);
             const pageTranslationsLoad = ensurePageTranslations(translations, dynamicPage.id);
+            const itemTranslationsLoad = ensureCmsTranslations(translations, [collectionItem.id]);
+
+            // Resolve reference fields in the collection item values (adds nested
+            // values like "location.name" for inline variables), then translate
+            const translatedItemValuesLoad = resolveReferenceFields(
+              collectionItem.values,
+              collectionFields,
+              isPublished,
+              '',
+              new Set(),
+              translations
+            ).then(async (values) => {
+              await itemTranslationsLoad;
+              return applyCmsTranslations(collectionItem.id, values, collectionFields, translations, { includeIncomplete: !isPublished });
+            });
 
             // Metadata-only mode: skip heavy layer/component resolution
             if (!resolveLayers) {
-              let enhancedItemValues = await resolveReferenceFields(
-                collectionItem.values,
-                collectionFields,
-                isPublished,
-                '',
-                new Set(),
-                translations
-              );
-              await ensureCmsTranslations(translations, [collectionItem.id]);
-              enhancedItemValues = applyCmsTranslations(collectionItem.id, enhancedItemValues, collectionFields, translations, { includeIncomplete: !isPublished });
-              enhancedItemValues = formatDateFieldsInItemValues(enhancedItemValues, collectionFields, timezone);
+              const [matchingPage, translatedItemValues] = await Promise.all([
+                pageLoad,
+                translatedItemValuesLoad,
+                pageTranslationsLoad,
+              ]);
+              if (!matchingPage) return null;
 
               const enhancedCollectionItem = {
                 ...collectionItem,
-                values: enhancedItemValues,
+                values: formatDateFieldsInItemValues(translatedItemValues, collectionFields, timezone),
               };
 
-              await pageTranslationsLoad;
               return {
                 page: matchingPage,
                 pageLayers: { layers: [] } as any,
@@ -721,17 +720,17 @@ async function fetchPageByPathInternal(
               };
             }
 
-            // Get layers for the dynamic page
-            const [{ data: pageLayers, error: layersError }] = await Promise.all([
-              supabase
-                .from('page_layers')
-                .select('*')
-                .eq('page_id', matchingPage.id)
-                .eq('is_published', isPublished)
-                .is('deleted_at', null)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .single(),
+            const itemOrderLoad = loadCollectionItemOrder(collectionId, collectionFields, cmsSettings.next_previous, isPublished);
+            const [
+              matchingPage,
+              { data: pageLayers, error: layersError },
+              translatedItemValues,
+              [dynamicPageGlobals, dynamicPageGlobalsMeta],
+            ] = await Promise.all([
+              pageLoad,
+              fetchPageLayersWithComponents(supabase, dynamicPage.id, isPublished, components),
+              translatedItemValuesLoad,
+              Promise.all([buildGlobalsDataMap(isPublished), buildGlobalsMetaDataMap(isPublished)]),
               pageTranslationsLoad,
             ]);
 
@@ -739,24 +738,10 @@ async function fetchPageByPathInternal(
               console.error(`Failed to fetch ${isPublished ? 'published' : 'draft'} layers:`, layersError);
               return null;
             }
+            if (!matchingPage) return null;
 
-            // Resolve reference fields in the collection item values
-            // This adds nested field values like "location.name" for inline variable resolution
-            let enhancedItemValues = await resolveReferenceFields(
-              collectionItem.values,
-              collectionFields,
-              isPublished,
-              '',
-              new Set(),
-              translations
-            );
-
-            // Apply CMS translations to the item values
-            await ensureCmsTranslations(translations, [collectionItem.id]);
-            enhancedItemValues = applyCmsTranslations(collectionItem.id, enhancedItemValues, collectionFields, translations, { includeIncomplete: !isPublished });
-
-            const rawItemValues = { ...enhancedItemValues };
-            enhancedItemValues = formatDateFieldsInItemValues(enhancedItemValues, collectionFields, timezone);
+            const rawItemValues = { ...translatedItemValues };
+            const enhancedItemValues = formatDateFieldsInItemValues(translatedItemValues, collectionFields, timezone);
 
             // Create enhanced collection item with resolved reference values and translations
             const enhancedCollectionItem = {
@@ -778,10 +763,6 @@ async function fetchPageByPathInternal(
 
             // Inject dynamic page collection data into layers (including expanded component layers)
             // This resolves inline variables like "Name → Location" on the page
-            const [dynamicPageGlobals, dynamicPageGlobalsMeta] = await Promise.all([
-              buildGlobalsDataMap(isPublished),
-              buildGlobalsMetaDataMap(isPublished),
-            ]);
             const layersWithInjectedData = await Promise.all(
               layersWithComponents.map((layer: Layer) =>
                 injectCollectionData(layer, enhancedItemValues, collectionFields, isPublished, undefined, rawItemValues, timezone, dynamicPageGlobals, dynamicPageGlobalsMeta)
@@ -808,49 +789,7 @@ async function fetchPageByPathInternal(
             const resolved = await resolveAllAssets(resolvedLayers, isPublished, components);
             resolvedLayers = resolved.layers;
 
-            // Fetch the ordered list of ids + slugs for the page's collection
-            // so links using `next-item` / `previous-item` can resolve at
-            // render time. The sort is configurable per-page (CMS settings);
-            // the default is `manual_order ASC` to match other parts of the
-            // system. We grab values too so we can build a slug map — the
-            // neighbouring items are typically not referenced anywhere else
-            // on the page, so PageRenderer would otherwise have no way to
-            // resolve their URLs. Only the sort field and the slug are read
-            // here, so only those values are fetched — loading every value of
-            // every item made each dynamic-page render scale with the whole
-            // collection's content size.
-            let pageCollectionSortedItemIds: string[] | undefined;
-            let pageCollectionSortedItemSlugs: Record<string, string> | undefined;
-            try {
-              const slugFieldId = collectionFields.find(f => f.key === 'slug')?.id;
-              const idFieldId = collectionFields.find(f => f.key === 'id')?.id;
-              const nextPreviousSortBy = cmsSettings.next_previous?.sort_by || idFieldId || 'manual';
-              const neededFieldIds = [slugFieldId, nextPreviousSortBy === 'manual' ? undefined : nextPreviousSortBy]
-                .filter((id): id is string => !!id);
-              const { items: collectionItems } = await getItemsByCollectionId(
-                cmsSettings.collection_id,
-                isPublished
-              );
-              const neededValues = neededFieldIds.length > 0 && collectionItems.length > 0
-                ? await getValuesByItemIds(collectionItems.map(i => i.id), isPublished, undefined, neededFieldIds)
-                : {};
-              const orderedItems = sortItemsForNextPrevious(
-                collectionItems.map(item => ({ ...item, values: neededValues[item.id] || {} })),
-                collectionFields,
-                cmsSettings.next_previous
-              );
-              pageCollectionSortedItemIds = orderedItems.map(i => i.id);
-              if (slugFieldId) {
-                pageCollectionSortedItemSlugs = {};
-                for (const item of orderedItems) {
-                  const slug = item.values[slugFieldId];
-                  if (slug) pageCollectionSortedItemSlugs[item.id] = slug;
-                }
-              }
-            } catch (err) {
-              // Non-fatal: next/previous links will simply not resolve.
-              console.error('[fetchPageByPath] Failed to fetch collection item order:', err);
-            }
+            const { sortedItemIds: pageCollectionSortedItemIds, sortedItemSlugs: pageCollectionSortedItemSlugs } = await itemOrderLoad;
 
             return {
               page: matchingPage,
@@ -877,10 +816,12 @@ async function fetchPageByPathInternal(
     }
 
     // Handle non-dynamic page (exact match)
-    const pageTranslationsLoad = ensurePageTranslations(translations, matchingPage.id);
+    const pageLoad = fetchPageRow(supabase, matchingRoute.id, isPublished);
+    const pageTranslationsLoad = ensurePageTranslations(translations, matchingRoute.id);
 
     if (!resolveLayers) {
-      await pageTranslationsLoad;
+      const [matchingPage] = await Promise.all([pageLoad, pageTranslationsLoad]);
+      if (!matchingPage) return null;
       return {
         page: matchingPage,
         pageLayers: { layers: [] } as any,
@@ -891,17 +832,10 @@ async function fetchPageByPathInternal(
       };
     }
 
-    // Get layers for the matched page
-    const [{ data: pageLayers, error: layersError }] = await Promise.all([
-      supabase
-        .from('page_layers')
-        .select('*')
-        .eq('page_id', matchingPage.id)
-        .eq('is_published', isPublished)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single(),
+    // Get the full page row and its layers
+    const [matchingPage, { data: pageLayers, error: layersError }] = await Promise.all([
+      pageLoad,
+      fetchPageLayersWithComponents(supabase, matchingRoute.id, isPublished, components),
       pageTranslationsLoad,
     ]);
 
@@ -909,6 +843,7 @@ async function fetchPageByPathInternal(
       console.error(`Failed to fetch ${isPublished ? 'published' : 'draft'} layers:`, layersError);
       return null;
     }
+    if (!matchingPage) return null;
 
     // Translate component-instance override values before resolving components,
     // so per-instance translations propagate correctly through the override pipeline.
@@ -1011,21 +946,21 @@ export async function fetchErrorPage(
       throw new Error('Supabase not configured');
     }
 
-    // Get all active locales from the database
-    const { data: availableLocales } = await supabase
-      .from('locales')
-      .select('*')
-      .eq('is_published', isPublished)
-      .is('deleted_at', null);
-
-    // Get the error page
-    const { data: errorPage, error: errorPageError } = await supabase
-      .from('pages')
-      .select('*')
-      .eq('error_page', errorCode)
-      .eq('is_published', isPublished)
-      .is('deleted_at', null)
-      .maybeSingle();
+    // Get all active locales and the error page
+    const [{ data: availableLocales }, { data: errorPage, error: errorPageError }] = await Promise.all([
+      supabase
+        .from('locales')
+        .select('*')
+        .eq('is_published', isPublished)
+        .is('deleted_at', null),
+      supabase
+        .from('pages')
+        .select('*')
+        .eq('error_page', errorCode)
+        .eq('is_published', isPublished)
+        .is('deleted_at', null)
+        .maybeSingle(),
+    ]);
 
     if (errorPageError) {
       throw new Error(`Failed to fetch error page: ${errorPageError.message}`);
@@ -1035,27 +970,25 @@ export async function fetchErrorPage(
       return null;
     }
 
-    // Get layers for the error page
-    const { data: pageLayers, error: layersError } = await supabase
-      .from('page_layers')
-      .select('*')
-      .eq('page_id', errorPage.id)
-      .eq('is_published', isPublished)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    const components = createOnDemandComponentList(isPublished, tenantId);
+    const translationsLoad = (async () => {
+      const loaded = localeCode
+        ? await loadTranslationsForLocale(localeCode, isPublished, tenantId, (availableLocales as Locale[] | null) ?? undefined)
+        : { locale: null, translations: {} as Record<string, Translation> };
+      await ensurePageTranslations(loaded.translations, errorPage.id);
+      return loaded;
+    })();
+
+    // Get layers for the error page while its translations load
+    const [{ data: pageLayers, error: layersError }, { locale, translations }] = await Promise.all([
+      fetchPageLayersWithComponents(supabase, errorPage.id, isPublished, components),
+      translationsLoad,
+    ]);
 
     if (layersError) {
       throw new Error(`Failed to fetch ${isPublished ? 'published' : 'draft'} error page layers: ${layersError.message}`);
     }
 
-    const components = await fetchComponents(supabase, isPublished);
-
-    const { locale, translations } = localeCode
-      ? await loadTranslationsForLocale(localeCode, isPublished, tenantId)
-      : { locale: null, translations: {} as Record<string, Translation> };
-    await ensurePageTranslations(translations, errorPage.id);
     const pageTranslations = locale && Object.keys(translations).length > 0 ? translations : undefined;
     const translationOptions = { includeIncomplete: !isPublished };
 
@@ -1112,7 +1045,7 @@ export async function fetchErrorPage(
  * Works for both draft and published pages
  * @param isPublished - Whether to fetch published or draft version
  * @param paginationContext - Optional pagination context with page numbers from URL
- * @param preloadedComponents - Optional pre-fetched components to avoid redundant queries
+ * @param preloadedComponents - Optional component list to fill and reuse (loaded on demand when omitted)
  */
 export const fetchHomepage = cache(async function fetchHomepage(
   isPublished: boolean,
@@ -1128,34 +1061,24 @@ export const fetchHomepage = cache(async function fetchHomepage(
       return null;
     }
 
-    // Fetch locales, homepage, and components in parallel
+    // Fetch locales and homepage in parallel
     const [
       { data: availableLocales },
       { data: homepage },
-      componentsResult,
     ] = await Promise.all([
       supabase.from('locales').select('*').eq('is_published', isPublished).is('deleted_at', null),
       supabase.from('pages').select('*').eq('is_index', true).is('page_folder_id', null).eq('is_published', isPublished).is('deleted_at', null).limit(1).single(),
-      preloadedComponents ? Promise.resolve(preloadedComponents) : fetchComponents(supabase, isPublished),
     ]);
 
     if (!homepage) {
       return null;
     }
 
-    const components = componentsResult;
+    const components = preloadedComponents ?? createOnDemandComponentList(isPublished, tenantId);
 
     // Get layers for homepage (depends on homepage.id)
     const [{ data: pageLayers, error: layersError }] = await Promise.all([
-      supabase
-        .from('page_layers')
-        .select('*')
-        .eq('page_id', homepage.id)
-        .eq('is_published', isPublished)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single(),
+      fetchPageLayersWithComponents(supabase, homepage.id, isPublished, components),
       ensurePageTranslations(translations, homepage.id),
     ]);
 
@@ -1204,19 +1127,106 @@ export const fetchHomepage = cache(async function fetchHomepage(
   }
 });
 
+/** Page columns needed to match a URL; the matched page's full row is loaded separately */
+const PAGE_ROUTE_COLUMNS = 'id, slug, page_folder_id, is_index, is_dynamic, cms:settings->cms';
+
+type PageRoute = PageRouteFields & { settings: Pick<PageSettings, 'cms'> };
+
 /**
- * Fetch all components from the database
- * @param supabase - Supabase client
- * @param isPublished - Whether to fetch published or draft components (defaults to false for draft)
- * @returns Array of components or empty array if fetch fails
+ * Fetch the routing fields of every page (no SEO, custom code or other settings,
+ * which can add up to hundreds of KB on large sites)
  */
-async function fetchComponents(supabase: any, isPublished: boolean = false): Promise<Component[]> {
-  const { data: components } = await supabase
-    .from('components')
-    .select('*')
+async function fetchPageRoutes(supabase: SupabaseClient, isPublished: boolean): Promise<PageRoute[] | null> {
+  const { data } = await supabase
+    .from('pages')
+    .select(PAGE_ROUTE_COLUMNS)
     .eq('is_published', isPublished)
     .is('deleted_at', null);
-  return components || [];
+  if (!data) return null;
+
+  const rows = data as unknown as Array<PageRouteFields & { cms: PageSettings['cms'] | null }>;
+  return rows.map(({ cms, ...route }) => ({ ...route, settings: cms ? { cms } : {} }));
+}
+
+/** Fetch a page's full row */
+async function fetchPageRow(supabase: SupabaseClient, pageId: string, isPublished: boolean): Promise<Page | null> {
+  const { data, error } = await supabase
+    .from('pages')
+    .select('*')
+    .eq('id', pageId)
+    .eq('is_published', isPublished)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) console.error('Failed to fetch page:', error);
+  return (data as Page | null) ?? null;
+}
+
+/** Fetch a page's latest layers row, then load the components those layers reference */
+async function fetchPageLayersWithComponents(
+  supabase: SupabaseClient,
+  pageId: string,
+  isPublished: boolean,
+  components: Component[]
+) {
+  const result = await supabase
+    .from('page_layers')
+    .select('*')
+    .eq('page_id', pageId)
+    .eq('is_published', isPublished)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+  if (!result.error) await ensureReferencedComponents(components, result.data?.layers);
+  return result;
+}
+
+/**
+ * Fetch the ordered ids + slugs of a dynamic page's collection so links using
+ * `next-item` / `previous-item` can resolve at render time. The sort is
+ * configurable per-page (CMS settings); the default is `manual_order ASC` to
+ * match other parts of the system. Slugs are needed because the neighbouring
+ * items are typically not referenced anywhere else on the page, so
+ * PageRenderer would otherwise have no way to resolve their URLs. Only the
+ * sort field and the slug are fetched — loading every value of every item
+ * made each dynamic-page render scale with the whole collection's content size.
+ * Failures are non-fatal: next/previous links will simply not resolve.
+ */
+async function loadCollectionItemOrder(
+  collectionId: string,
+  collectionFields: CollectionField[],
+  nextPrevious: NonNullable<PageSettings['cms']>['next_previous'],
+  isPublished: boolean
+): Promise<{ sortedItemIds?: string[]; sortedItemSlugs?: Record<string, string> }> {
+  try {
+    const slugFieldId = collectionFields.find(f => f.key === 'slug')?.id;
+    const idFieldId = collectionFields.find(f => f.key === 'id')?.id;
+    const nextPreviousSortBy = nextPrevious?.sort_by || idFieldId || 'manual';
+    const neededFieldIds = [slugFieldId, nextPreviousSortBy === 'manual' ? undefined : nextPreviousSortBy]
+      .filter((id): id is string => !!id);
+    const { items: collectionItems } = await getItemsByCollectionId(collectionId, isPublished);
+    const neededValues = neededFieldIds.length > 0 && collectionItems.length > 0
+      ? await getValuesByItemIds(collectionItems.map(i => i.id), isPublished, undefined, neededFieldIds)
+      : {};
+    const orderedItems = sortItemsForNextPrevious(
+      collectionItems.map(item => ({ ...item, values: neededValues[item.id] || {} })),
+      collectionFields,
+      nextPrevious
+    );
+
+    let sortedItemSlugs: Record<string, string> | undefined;
+    if (slugFieldId) {
+      sortedItemSlugs = {};
+      for (const item of orderedItems) {
+        const slug = item.values[slugFieldId];
+        if (slug) sortedItemSlugs[item.id] = slug;
+      }
+    }
+    return { sortedItemIds: orderedItems.map(i => i.id), sortedItemSlugs };
+  } catch (err) {
+    console.error('[fetchPageByPath] Failed to fetch collection item order:', err);
+    return {};
+  }
 }
 
 /**
@@ -1253,10 +1263,11 @@ async function resolveReferenceFields(
     visited.add(visitKey);
 
     try {
-      const refItem = await getItemWithValues(refItemId, isPublished);
+      const [refItem, refFields] = await Promise.all([
+        getItemWithValues(refItemId, isPublished),
+        getFieldsByCollectionId(field.reference_collection_id, isPublished, { excludeComputed: true }),
+      ]);
       if (!refItem) continue;
-
-      const refFields = await getFieldsByCollectionId(field.reference_collection_id, isPublished, { excludeComputed: true });
 
       // Translate the referenced item's values so localized pages render
       // referenced CMS content in the active locale (not the source language)
@@ -1483,9 +1494,8 @@ async function injectCollectionData(
   if (textVariable && textVariable.type === 'dynamic_rich_text') {
     const content = textVariable.data.content;
     if (content && typeof content === 'object') {
-      const restrictiveBlockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'button'];
       const currentTag = layer.settings?.tag || layer.name || 'div';
-      if (restrictiveBlockTags.includes(currentTag) &&
+      if (RESTRICTIVE_BLOCK_TAGS.includes(currentTag) &&
           hasBlockElementsInInlineVariables(content, enhancedValues)) {
         updates.settings = {
           ...layer.settings,
@@ -1997,6 +2007,8 @@ export async function resolveRichTextCollections(
   translations?: Record<string, Translation>,
   ancestorComponentIds?: Set<string>,
 ): Promise<Layer[]> {
+  // Rich text resolved from CMS items can embed components the page itself never references
+  await ensureReferencedComponents(components, layers);
   if (!components.length) return layers;
 
   const resolveLayer = async (layer: Layer): Promise<Layer> => {
@@ -4022,6 +4034,9 @@ export async function renderCollectionItemsToHtml(
   const enrichedSlugs = { ...collectionItemSlugs };
   await enrichSlugsFromLinkFields(items, collectionFields, enrichedSlugs, isPublished);
 
+  // Filled with the components embedded in the items' rich text; shared by all items
+  const components = createOnDemandComponentList(isPublished, tenantId);
+
   // Pre-process: translations + date formatting (pure computation)
   const preprocessed = items.map(item => {
     const rawValues = { ...item.values };
@@ -4115,8 +4130,10 @@ export async function renderCollectionItemsToHtml(
         { [collectionLayerId]: enhancedValues },
       );
 
+      resolvedLayers = await resolveRichTextCollections(resolvedLayers, components, isPublished, translations);
+
       // Resolve all AssetVariables to URLs server-side
-      const resolved = await resolveAllAssets(resolvedLayers, isPublished);
+      const resolved = await resolveAllAssets(resolvedLayers, isPublished, components);
       resolvedLayers = resolved.layers;
       let assetMap = resolved.assetMap;
 
@@ -4196,7 +4213,7 @@ export async function renderCollectionItemsToHtml(
         };
 
         const remapped = remapLayerIdsForCollectionItem(clonedLayer, idSuffix);
-        return layerToHtml(remapped, item.id, pages, folders, enrichedSlugs, locale, translations, anchorMap, item.values, undefined, assetMap, undefined, undefined, undefined, undefined, pageLinkContext);
+        return layerToHtml(remapped, item.id, pages, folders, enrichedSlugs, locale, translations, anchorMap, item.values, undefined, assetMap, undefined, components, undefined, undefined, pageLinkContext);
       }
 
       // Fallback: render children and wrap with a generic container. Used
@@ -4204,7 +4221,7 @@ export async function renderCollectionItemsToHtml(
       // contracts). Loses link/action wrappers but keeps content rendering.
       const itemHtml = resolvedLayers
         .map((layer) =>
-          layerToHtml(layer, item.id, pages, folders, enrichedSlugs, locale, translations, anchorMap, item.values, undefined, assetMap, undefined, undefined, undefined, undefined, pageLinkContext)
+          layerToHtml(layer, item.id, pages, folders, enrichedSlugs, locale, translations, anchorMap, item.values, undefined, assetMap, undefined, components, undefined, undefined, pageLinkContext)
         )
         .join('');
 
@@ -4257,9 +4274,8 @@ async function injectCollectionDataForHtml(
   if (textVariable && textVariable.type === 'dynamic_rich_text') {
     const content = textVariable.data.content;
     if (content && typeof content === 'object') {
-      const restrictiveBlockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'button'];
       const currentTag = layer.settings?.tag || layer.name || 'div';
-      if (restrictiveBlockTags.includes(currentTag) &&
+      if (RESTRICTIVE_BLOCK_TAGS.includes(currentTag) &&
           hasBlockElementsInInlineVariables(content, enhancedValues)) {
         updates.settings = {
           ...layer.settings,
@@ -4616,10 +4632,14 @@ function renderTiptapToHtml(
   renderComponentHtml?: RenderComponentHtmlFn,
   linkContext?: LinkResolutionContext,
   parentRowIdx = 0,
+  useSpanForParagraphs = true,
 ): string {
   if (!content || typeof content !== 'object') {
     return '';
   }
+
+  const renderChildren = (nodes: any[] | undefined): string =>
+    (nodes || []).map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext, 0, useSpanForParagraphs)).join('');
 
   // Handle text node
   if (content.type === 'text') {
@@ -4697,63 +4717,64 @@ function renderTiptapToHtml(
     return text;
   }
 
-  // Handle paragraph
+  // Handle paragraph (<span> inside tags that can't hold a <p>)
   if (content.type === 'paragraph') {
-    const mergedStyles = { ...DEFAULT_TEXT_STYLES, ...textStyles };
-    const paragraphClass = mergedStyles?.paragraph?.classes || '';
+    const paragraphClass = escapeHtml(getTextStyleClasses(textStyles, 'paragraph'));
+    const inlineTag = useSpanForParagraphs ? 'span' : 'p';
     // Empty paragraphs use non-breaking space to preserve the empty line
-    const innerHtml = content.content && content.content.length > 0
-      ? content.content.map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext)).join('')
-      : '\u00A0';
-    // Wrap in span with paragraph styles for proper block display
-    return `<span class="${escapeHtml(paragraphClass)}">${innerHtml}</span>`;
+    if (!content.content || content.content.length === 0) {
+      return `<${inlineTag} class="${paragraphClass}">\u00A0</${inlineTag}>`;
+    }
+    const hasBlockContent = content.content.some((node: any) =>
+      (node.type === 'dynamicVariable' && node.attrs?.variable?.data?.field_type === 'rich_text') ||
+      node.type === 'richTextComponent'
+    );
+    const tag = hasBlockContent ? 'div' : inlineTag;
+    return `<${tag} class="${paragraphClass}">${renderChildren(content.content)}</${tag}>`;
   }
 
-  // Handle heading
+  // Handle heading (<span> inside tags that can't hold an <h*>)
   if (content.type === 'heading') {
     const level = content.attrs?.level || 1;
     const styleKey = `h${level}`;
-    const mergedStyles = { ...DEFAULT_TEXT_STYLES, ...textStyles };
-    const headingClass = mergedStyles?.[styleKey]?.classes || '';
+    const headingClass = getTextStyleClasses(textStyles, styleKey);
     // Empty headings use non-breaking space to preserve the empty line
     const innerHtml = content.content && content.content.length > 0
-      ? content.content.map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext)).join('')
+      ? renderChildren(content.content)
       : '\u00A0';
-    // Use span to avoid nesting issues (h1 inside p is invalid)
-    return `<span class="${escapeHtml(headingClass)}">${innerHtml}</span>`;
+    const tag = useSpanForParagraphs ? 'span' : styleKey;
+    return `<${tag} class="${escapeHtml(headingClass)}">${innerHtml}</${tag}>`;
   }
 
   // Handle doc (root)
   if (content.type === 'doc' && Array.isArray(content.content)) {
-    return content.content.map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext)).join('');
+    return renderChildren(content.content);
   }
 
   // Handle bullet list
   if (content.type === 'bulletList') {
-    const listClass = textStyles?.bulletList?.classes || '';
+    const listClass = getTextStyleClasses(textStyles, 'bulletList');
     const classAttr = listClass ? ` class="${escapeHtml(listClass)}"` : '';
-    const items = content.content
-      ? content.content.map((item: any) => renderTiptapToHtml(item, textStyles, renderComponentHtml, linkContext)).join('')
-      : '';
-    return `<ul${classAttr}>${items}</ul>`;
+    return `<ul${classAttr}>${renderChildren(content.content)}</ul>`;
   }
 
   // Handle ordered list
   if (content.type === 'orderedList') {
-    const listClass = textStyles?.orderedList?.classes || '';
+    const listClass = getTextStyleClasses(textStyles, 'orderedList');
     const classAttr = listClass ? ` class="${escapeHtml(listClass)}"` : '';
-    const items = content.content
-      ? content.content.map((item: any) => renderTiptapToHtml(item, textStyles, renderComponentHtml, linkContext)).join('')
-      : '';
-    return `<ol${classAttr}>${items}</ol>`;
+    return `<ol${classAttr}>${renderChildren(content.content)}</ol>`;
   }
 
-  // Handle list item
+  // Handle list item: paragraphs render inline, like the page renderer
   if (content.type === 'listItem') {
-    const innerHtml = content.content
-      ? content.content.map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext)).join('')
-      : '';
-    return `<li>${innerHtml}</li>`;
+    const innerHtml = (content.content || [])
+      .map((node: any) => (node.type === 'paragraph'
+        ? renderChildren(node.content)
+        : renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext, 0, false)))
+      .join('');
+    const listItemClass = getTextStyleClasses(textStyles, 'listItem');
+    const classAttr = listItemClass ? ` class="${escapeHtml(listItemClass)}"` : '';
+    return `<li${classAttr}>${innerHtml}</li>`;
   }
 
   // Handle hardBreak
@@ -4806,7 +4827,7 @@ function renderTiptapToHtml(
 
   if (content.type === 'table') {
     const rows = (content.content || [])
-      .map((row: any, rowIdx: number) => renderTiptapToHtml(row, textStyles, renderComponentHtml, linkContext, rowIdx))
+      .map((row: any, rowIdx: number) => renderTiptapToHtml(row, textStyles, renderComponentHtml, linkContext, rowIdx, useSpanForParagraphs))
       .join('');
 
     const mergedStyles = { ...DEFAULT_TEXT_STYLES, ...textStyles };
@@ -4823,7 +4844,7 @@ function renderTiptapToHtml(
     const cells = (content.content || [])
       .map((node: any, cellIdx: number) => {
         if (node.type !== 'tableCell' && node.type !== 'tableHeader') {
-          return renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext, parentRowIdx);
+          return renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext, parentRowIdx, useSpanForParagraphs);
         }
         const tag = node.type === 'tableHeader' ? 'th' : 'td';
         const cellStyleKey = node.type === 'tableHeader' ? 'tableHeader' : 'tableCell';
@@ -4840,9 +4861,7 @@ function renderTiptapToHtml(
         if (node.attrs?.colspan && node.attrs.colspan > 1) attrs.push(`colspan="${node.attrs.colspan}"`);
         if (node.attrs?.rowspan && node.attrs.rowspan > 1) attrs.push(`rowspan="${node.attrs.rowspan}"`);
         const attrStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
-        const cellContent = (node.content || [])
-          .map((child: any) => renderTiptapToHtml(child, textStyles, renderComponentHtml, linkContext))
-          .join('');
+        const cellContent = renderChildren(node.content);
         return `<${tag}${attrStr}>${cellContent}</${tag}>`;
       })
       .join('');
@@ -4857,10 +4876,44 @@ function renderTiptapToHtml(
 
   // Fallback: recursively process content
   if (Array.isArray(content.content)) {
-    return content.content.map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext)).join('');
+    return renderChildren(content.content);
   }
 
   return '';
+}
+
+/** Renders a rich text layer's document; a single paragraph renders inline or in one wrapper, as on the page. */
+function renderRichTextDocToHtml(
+  doc: any,
+  layout: RichTextLayout,
+  textStyles?: Record<string, any>,
+  renderComponentHtml?: RenderComponentHtmlFn,
+  linkContext?: LinkResolutionContext,
+): string {
+  const content = layout.flatten ? flattenTiptapParagraphs(doc) : doc;
+  if (content?.type !== 'doc' || !Array.isArray(content.content)) {
+    return '';
+  }
+
+  const blocks = content.content;
+  if (blocks.length === 1 && blocks[0].type === 'paragraph') {
+    const paragraph = blocks[0];
+    if (!paragraph.content?.length) {
+      return '';
+    }
+    const inlineHtml = renderTiptapToHtml(
+      { type: 'doc', content: paragraph.content }, textStyles, renderComponentHtml, linkContext, 0, layout.useSpanForParagraphs,
+    );
+    if (layout.flatten) {
+      return inlineHtml;
+    }
+    const tag = layout.useSpanForParagraphs ? 'span' : 'p';
+    const paragraphClass = getTextStyleClasses(textStyles, 'paragraph');
+    const classAttr = paragraphClass ? ` class="${escapeHtml(paragraphClass)}"` : '';
+    return `<${tag}${classAttr}>${inlineHtml}</${tag}>`;
+  }
+
+  return renderTiptapToHtml(content, textStyles, renderComponentHtml, linkContext, 0, layout.useSpanForParagraphs);
 }
 
 /**
@@ -4964,6 +5017,11 @@ export function layerToHtml(
   // Get the HTML tag
   let tag = getLayerHtmlTag(layer, pageLinkContext?.parentLayerName);
 
+  const richTextLayout: RichTextLayout = layer.variables?.text?.type === 'dynamic_rich_text'
+    ? getRichTextLayout(layer.variables.text.data.content, tag, isTextContentLayer(layer))
+    : { tag, useSpanForParagraphs: false, flatten: false };
+  tag = richTextLayout.tag;
+
   // Buttons with link settings render as <a> directly instead of being
   // wrapped in <a><button></button></a> which is invalid HTML
   const buttonLinkSettings = layer.variables?.link;
@@ -5000,6 +5058,14 @@ export function layerToHtml(
     const hasWidth = cls.some((c: string) => /^w-/.test(c.split(':').pop() || ''));
     if (!hasWidth) {
       classesStr = classesStr ? `${classesStr} w-fit` : 'w-fit';
+    }
+  }
+
+  // Rich text kept in a <p> gets the paragraph style on the element itself
+  if (!isTextContentLayer(layer) && tag === 'p' && layer.variables?.text) {
+    const paragraphClasses = getTextStyleClasses(layer.textStyles, 'paragraph');
+    if (paragraphClasses) {
+      classesStr = classesStr ? `${classesStr} ${paragraphClasses}` : paragraphClasses;
     }
   }
 
@@ -5569,7 +5635,7 @@ export function layerToHtml(
         layerDataMap: effectiveLayerDataMap,
         pageCollectionSortedItemIds: pageLinkContext?.pageCollectionSortedItemIds,
       };
-      textContent = renderTiptapToHtml(textVariable.data.content, layer.textStyles, componentRenderer, richTextLinkContext);
+      textContent = renderRichTextDocToHtml(textVariable.data.content, richTextLayout, layer.textStyles, componentRenderer, richTextLinkContext);
       isRichText = true;
     }
   }

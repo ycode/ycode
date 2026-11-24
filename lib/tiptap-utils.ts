@@ -178,6 +178,9 @@ export function isTiptapDoc(value: unknown): value is { type: 'doc'; content: an
   );
 }
 
+/** HTML tags that can't contain block elements (paragraphs, lists, divs) */
+export const RESTRICTIVE_BLOCK_TAGS = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'button'];
+
 /**
  * Check if Tiptap JSON content contains block-level elements (lists)
  * These cannot be nested inside restrictive tags (p, h1-h6, span, a, button)
@@ -248,6 +251,31 @@ export function hasBlockElementsWithResolver(
   };
 
   return content.content.some(checkNode);
+}
+
+export interface RichTextLayout {
+  /** Wrapper tag, switched to `div` when block content can't live in the layer's tag */
+  tag: string;
+  /** Render paragraphs and headings as `<span>` so they can sit inside the wrapper */
+  useSpanForParagraphs: boolean;
+  /** Merge paragraphs into one inline flow (text and heading layers) */
+  flatten: boolean;
+}
+
+/**
+ * Wrapper and paragraph tags for resolved rich text, as the page renderer picks them.
+ * @param isSimpleTextLayer - Text or heading layer (`isTextContentLayer`)
+ */
+export function getRichTextLayout(content: any, tag: string, isSimpleTextLayer: boolean): RichTextLayout {
+  const hasBlockExpansion = hasBlockElementsWithResolver(content, () => undefined);
+
+  if (!RESTRICTIVE_BLOCK_TAGS.includes(tag)) {
+    return { tag, useSpanForParagraphs: false, flatten: isSimpleTextLayer && !hasBlockExpansion };
+  }
+  if (hasBlockExpansion) {
+    return { tag: 'div', useSpanForParagraphs: false, flatten: false };
+  }
+  return { tag, useSpanForParagraphs: !isSimpleTextLayer, flatten: isSimpleTextLayer };
 }
 
 /** Check if Tiptap JSON content contains a link mark or embedded component node. */
