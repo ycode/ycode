@@ -29,7 +29,7 @@ import { DEFAULT_ASSETS, buildImageSizes, generateImageSrcset, getOptimizedImage
 import { resolveInlineVariablesFromData } from '@/lib/inline-variables';
 import { getPaginationLayerKind, paginationTextVariableToTemplate, resolvePaginationTextVariable } from '@/lib/pagination-text-utils';
 import { mergeGlobalsIntoFieldData, type GlobalFieldMeta } from '@/lib/collection-field-utils';
-import { extractPlainTextFromTiptap } from '@/lib/tiptap-utils';
+import { extractPlainTextFromTiptap, RESTRICTIVE_BLOCK_TAGS } from '@/lib/tiptap-utils';
 import { renderRichText, hasBlockElementsWithInlineVariables, getTextStyleClasses, flattenTiptapParagraphs, type RichTextLinkContext, type RenderComponentBlockFn } from '@/lib/text-format-utils';
 import { combineBgValues, mergeStaticBgVars } from '@/lib/tailwind-class-mapper';
 import { clsx } from 'clsx';
@@ -498,8 +498,7 @@ const LayerItem: React.FC<{
     )
     : false;
 
-  const restrictiveBlockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'button'];
-  const isRestrictiveTag = restrictiveBlockTags.includes(htmlTag);
+  const isRestrictiveTag = RESTRICTIVE_BLOCK_TAGS.includes(htmlTag);
 
   if (isRestrictiveTag) {
     if (hasBlockExpansion) {

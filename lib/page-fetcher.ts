@@ -11,17 +11,17 @@ import { enrichItemsWithCountValues } from '@/lib/repositories/collectionCountRe
 import { getLocaleScaffoldTranslations, getCmsTranslationsForItems, getPageTranslationsForLocale } from '@/lib/repositories/translationRepository';
 import { getTranslatableKey, slimTranslations, translatePageCustomCode } from '@/lib/locale-runtime';
 import type { Page, PageFolder, PageLayers, PageSettings, Component, ComponentVariable, CollectionItemWithValues, CollectionField, Layer, CollectionPaginationMeta, Translation, Locale } from '@/types';
-import { getCollectionVariable, getClassesString, resolveFieldValue, evaluateVisibility, evaluateCondition, getLayerHtmlTag, filterDisabledSliderLayers, applyCustomAttributesToHtml } from '@/lib/layer-utils';
+import { getCollectionVariable, getClassesString, resolveFieldValue, evaluateVisibility, evaluateCondition, getLayerHtmlTag, filterDisabledSliderLayers, applyCustomAttributesToHtml, isTextContentLayer } from '@/lib/layer-utils';
 import { isFieldVariable, isAssetVariable, createDynamicTextVariable, createDynamicRichTextVariable, createAssetVariable, getDynamicTextContent, getVariableStringValue, getAssetId, resolveDesignStyles } from '@/lib/variable-utils';
 import { applyGridSpanBindings } from '@/lib/grid-span-binding-utils';
 import { buildImageSizes, generateImageSrcset, getOptimizedImageUrl, getAssetProxyUrl, DEFAULT_ASSETS, collectLayerAssetIds, resolveInlineSvgAssetSrc, parseImageDimension, getSvgAspectRatioStyle } from '@/lib/asset-utils';
 import { resolveComponents, applyComponentOverrides } from '@/lib/resolve-components';
 import { createOnDemandComponentList, ensureReferencedComponents } from '@/lib/page-component-loader';
 import { getComponentVariantLayers } from '@/lib/component-variant-utils';
-import { isTiptapDoc, hasBlockElementsWithResolver } from '@/lib/tiptap-utils';
+import { isTiptapDoc, hasBlockElementsWithResolver, RESTRICTIVE_BLOCK_TAGS, getRichTextLayout, type RichTextLayout } from '@/lib/tiptap-utils';
 import { castValue, parseMultiReferenceValue, remapLayerIdsForCollectionItem } from '@/lib/collection-utils';
 import { isValidUUID } from '@/lib/utils';
-import { DEFAULT_TEXT_STYLES } from '@/lib/text-format-utils';
+import { DEFAULT_TEXT_STYLES, flattenTiptapParagraphs, getTextStyleClasses } from '@/lib/text-format-utils';
 
 // Pagination context passed through to resolveCollectionLayers
 export interface PaginationContext {
@@ -1494,9 +1494,8 @@ async function injectCollectionData(
   if (textVariable && textVariable.type === 'dynamic_rich_text') {
     const content = textVariable.data.content;
     if (content && typeof content === 'object') {
-      const restrictiveBlockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'button'];
       const currentTag = layer.settings?.tag || layer.name || 'div';
-      if (restrictiveBlockTags.includes(currentTag) &&
+      if (RESTRICTIVE_BLOCK_TAGS.includes(currentTag) &&
           hasBlockElementsInInlineVariables(content, enhancedValues)) {
         updates.settings = {
           ...layer.settings,
@@ -4035,6 +4034,9 @@ export async function renderCollectionItemsToHtml(
   const enrichedSlugs = { ...collectionItemSlugs };
   await enrichSlugsFromLinkFields(items, collectionFields, enrichedSlugs, isPublished);
 
+  // Filled with the components embedded in the items' rich text; shared by all items
+  const components = createOnDemandComponentList(isPublished, tenantId);
+
   // Pre-process: translations + date formatting (pure computation)
   const preprocessed = items.map(item => {
     const rawValues = { ...item.values };
@@ -4128,8 +4130,10 @@ export async function renderCollectionItemsToHtml(
         { [collectionLayerId]: enhancedValues },
       );
 
+      resolvedLayers = await resolveRichTextCollections(resolvedLayers, components, isPublished, translations);
+
       // Resolve all AssetVariables to URLs server-side
-      const resolved = await resolveAllAssets(resolvedLayers, isPublished);
+      const resolved = await resolveAllAssets(resolvedLayers, isPublished, components);
       resolvedLayers = resolved.layers;
       let assetMap = resolved.assetMap;
 
@@ -4209,7 +4213,7 @@ export async function renderCollectionItemsToHtml(
         };
 
         const remapped = remapLayerIdsForCollectionItem(clonedLayer, idSuffix);
-        return layerToHtml(remapped, item.id, pages, folders, enrichedSlugs, locale, translations, anchorMap, item.values, undefined, assetMap, undefined, undefined, undefined, undefined, pageLinkContext);
+        return layerToHtml(remapped, item.id, pages, folders, enrichedSlugs, locale, translations, anchorMap, item.values, undefined, assetMap, undefined, components, undefined, undefined, pageLinkContext);
       }
 
       // Fallback: render children and wrap with a generic container. Used
@@ -4217,7 +4221,7 @@ export async function renderCollectionItemsToHtml(
       // contracts). Loses link/action wrappers but keeps content rendering.
       const itemHtml = resolvedLayers
         .map((layer) =>
-          layerToHtml(layer, item.id, pages, folders, enrichedSlugs, locale, translations, anchorMap, item.values, undefined, assetMap, undefined, undefined, undefined, undefined, pageLinkContext)
+          layerToHtml(layer, item.id, pages, folders, enrichedSlugs, locale, translations, anchorMap, item.values, undefined, assetMap, undefined, components, undefined, undefined, pageLinkContext)
         )
         .join('');
 
@@ -4270,9 +4274,8 @@ async function injectCollectionDataForHtml(
   if (textVariable && textVariable.type === 'dynamic_rich_text') {
     const content = textVariable.data.content;
     if (content && typeof content === 'object') {
-      const restrictiveBlockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'button'];
       const currentTag = layer.settings?.tag || layer.name || 'div';
-      if (restrictiveBlockTags.includes(currentTag) &&
+      if (RESTRICTIVE_BLOCK_TAGS.includes(currentTag) &&
           hasBlockElementsInInlineVariables(content, enhancedValues)) {
         updates.settings = {
           ...layer.settings,
@@ -4629,10 +4632,14 @@ function renderTiptapToHtml(
   renderComponentHtml?: RenderComponentHtmlFn,
   linkContext?: LinkResolutionContext,
   parentRowIdx = 0,
+  useSpanForParagraphs = true,
 ): string {
   if (!content || typeof content !== 'object') {
     return '';
   }
+
+  const renderChildren = (nodes: any[] | undefined): string =>
+    (nodes || []).map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext, 0, useSpanForParagraphs)).join('');
 
   // Handle text node
   if (content.type === 'text') {
@@ -4710,63 +4717,64 @@ function renderTiptapToHtml(
     return text;
   }
 
-  // Handle paragraph
+  // Handle paragraph (<span> inside tags that can't hold a <p>)
   if (content.type === 'paragraph') {
-    const mergedStyles = { ...DEFAULT_TEXT_STYLES, ...textStyles };
-    const paragraphClass = mergedStyles?.paragraph?.classes || '';
+    const paragraphClass = escapeHtml(getTextStyleClasses(textStyles, 'paragraph'));
+    const inlineTag = useSpanForParagraphs ? 'span' : 'p';
     // Empty paragraphs use non-breaking space to preserve the empty line
-    const innerHtml = content.content && content.content.length > 0
-      ? content.content.map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext)).join('')
-      : '\u00A0';
-    // Wrap in span with paragraph styles for proper block display
-    return `<span class="${escapeHtml(paragraphClass)}">${innerHtml}</span>`;
+    if (!content.content || content.content.length === 0) {
+      return `<${inlineTag} class="${paragraphClass}">\u00A0</${inlineTag}>`;
+    }
+    const hasBlockContent = content.content.some((node: any) =>
+      (node.type === 'dynamicVariable' && node.attrs?.variable?.data?.field_type === 'rich_text') ||
+      node.type === 'richTextComponent'
+    );
+    const tag = hasBlockContent ? 'div' : inlineTag;
+    return `<${tag} class="${paragraphClass}">${renderChildren(content.content)}</${tag}>`;
   }
 
-  // Handle heading
+  // Handle heading (<span> inside tags that can't hold an <h*>)
   if (content.type === 'heading') {
     const level = content.attrs?.level || 1;
     const styleKey = `h${level}`;
-    const mergedStyles = { ...DEFAULT_TEXT_STYLES, ...textStyles };
-    const headingClass = mergedStyles?.[styleKey]?.classes || '';
+    const headingClass = getTextStyleClasses(textStyles, styleKey);
     // Empty headings use non-breaking space to preserve the empty line
     const innerHtml = content.content && content.content.length > 0
-      ? content.content.map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext)).join('')
+      ? renderChildren(content.content)
       : '\u00A0';
-    // Use span to avoid nesting issues (h1 inside p is invalid)
-    return `<span class="${escapeHtml(headingClass)}">${innerHtml}</span>`;
+    const tag = useSpanForParagraphs ? 'span' : styleKey;
+    return `<${tag} class="${escapeHtml(headingClass)}">${innerHtml}</${tag}>`;
   }
 
   // Handle doc (root)
   if (content.type === 'doc' && Array.isArray(content.content)) {
-    return content.content.map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext)).join('');
+    return renderChildren(content.content);
   }
 
   // Handle bullet list
   if (content.type === 'bulletList') {
-    const listClass = textStyles?.bulletList?.classes || '';
+    const listClass = getTextStyleClasses(textStyles, 'bulletList');
     const classAttr = listClass ? ` class="${escapeHtml(listClass)}"` : '';
-    const items = content.content
-      ? content.content.map((item: any) => renderTiptapToHtml(item, textStyles, renderComponentHtml, linkContext)).join('')
-      : '';
-    return `<ul${classAttr}>${items}</ul>`;
+    return `<ul${classAttr}>${renderChildren(content.content)}</ul>`;
   }
 
   // Handle ordered list
   if (content.type === 'orderedList') {
-    const listClass = textStyles?.orderedList?.classes || '';
+    const listClass = getTextStyleClasses(textStyles, 'orderedList');
     const classAttr = listClass ? ` class="${escapeHtml(listClass)}"` : '';
-    const items = content.content
-      ? content.content.map((item: any) => renderTiptapToHtml(item, textStyles, renderComponentHtml, linkContext)).join('')
-      : '';
-    return `<ol${classAttr}>${items}</ol>`;
+    return `<ol${classAttr}>${renderChildren(content.content)}</ol>`;
   }
 
-  // Handle list item
+  // Handle list item: paragraphs render inline, like the page renderer
   if (content.type === 'listItem') {
-    const innerHtml = content.content
-      ? content.content.map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext)).join('')
-      : '';
-    return `<li>${innerHtml}</li>`;
+    const innerHtml = (content.content || [])
+      .map((node: any) => (node.type === 'paragraph'
+        ? renderChildren(node.content)
+        : renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext, 0, false)))
+      .join('');
+    const listItemClass = getTextStyleClasses(textStyles, 'listItem');
+    const classAttr = listItemClass ? ` class="${escapeHtml(listItemClass)}"` : '';
+    return `<li${classAttr}>${innerHtml}</li>`;
   }
 
   // Handle hardBreak
@@ -4819,7 +4827,7 @@ function renderTiptapToHtml(
 
   if (content.type === 'table') {
     const rows = (content.content || [])
-      .map((row: any, rowIdx: number) => renderTiptapToHtml(row, textStyles, renderComponentHtml, linkContext, rowIdx))
+      .map((row: any, rowIdx: number) => renderTiptapToHtml(row, textStyles, renderComponentHtml, linkContext, rowIdx, useSpanForParagraphs))
       .join('');
 
     const mergedStyles = { ...DEFAULT_TEXT_STYLES, ...textStyles };
@@ -4836,7 +4844,7 @@ function renderTiptapToHtml(
     const cells = (content.content || [])
       .map((node: any, cellIdx: number) => {
         if (node.type !== 'tableCell' && node.type !== 'tableHeader') {
-          return renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext, parentRowIdx);
+          return renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext, parentRowIdx, useSpanForParagraphs);
         }
         const tag = node.type === 'tableHeader' ? 'th' : 'td';
         const cellStyleKey = node.type === 'tableHeader' ? 'tableHeader' : 'tableCell';
@@ -4853,9 +4861,7 @@ function renderTiptapToHtml(
         if (node.attrs?.colspan && node.attrs.colspan > 1) attrs.push(`colspan="${node.attrs.colspan}"`);
         if (node.attrs?.rowspan && node.attrs.rowspan > 1) attrs.push(`rowspan="${node.attrs.rowspan}"`);
         const attrStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
-        const cellContent = (node.content || [])
-          .map((child: any) => renderTiptapToHtml(child, textStyles, renderComponentHtml, linkContext))
-          .join('');
+        const cellContent = renderChildren(node.content);
         return `<${tag}${attrStr}>${cellContent}</${tag}>`;
       })
       .join('');
@@ -4870,10 +4876,44 @@ function renderTiptapToHtml(
 
   // Fallback: recursively process content
   if (Array.isArray(content.content)) {
-    return content.content.map((node: any) => renderTiptapToHtml(node, textStyles, renderComponentHtml, linkContext)).join('');
+    return renderChildren(content.content);
   }
 
   return '';
+}
+
+/** Renders a rich text layer's document; a single paragraph renders inline or in one wrapper, as on the page. */
+function renderRichTextDocToHtml(
+  doc: any,
+  layout: RichTextLayout,
+  textStyles?: Record<string, any>,
+  renderComponentHtml?: RenderComponentHtmlFn,
+  linkContext?: LinkResolutionContext,
+): string {
+  const content = layout.flatten ? flattenTiptapParagraphs(doc) : doc;
+  if (content?.type !== 'doc' || !Array.isArray(content.content)) {
+    return '';
+  }
+
+  const blocks = content.content;
+  if (blocks.length === 1 && blocks[0].type === 'paragraph') {
+    const paragraph = blocks[0];
+    if (!paragraph.content?.length) {
+      return '';
+    }
+    const inlineHtml = renderTiptapToHtml(
+      { type: 'doc', content: paragraph.content }, textStyles, renderComponentHtml, linkContext, 0, layout.useSpanForParagraphs,
+    );
+    if (layout.flatten) {
+      return inlineHtml;
+    }
+    const tag = layout.useSpanForParagraphs ? 'span' : 'p';
+    const paragraphClass = getTextStyleClasses(textStyles, 'paragraph');
+    const classAttr = paragraphClass ? ` class="${escapeHtml(paragraphClass)}"` : '';
+    return `<${tag}${classAttr}>${inlineHtml}</${tag}>`;
+  }
+
+  return renderTiptapToHtml(content, textStyles, renderComponentHtml, linkContext, 0, layout.useSpanForParagraphs);
 }
 
 /**
@@ -4977,6 +5017,11 @@ export function layerToHtml(
   // Get the HTML tag
   let tag = getLayerHtmlTag(layer, pageLinkContext?.parentLayerName);
 
+  const richTextLayout: RichTextLayout = layer.variables?.text?.type === 'dynamic_rich_text'
+    ? getRichTextLayout(layer.variables.text.data.content, tag, isTextContentLayer(layer))
+    : { tag, useSpanForParagraphs: false, flatten: false };
+  tag = richTextLayout.tag;
+
   // Buttons with link settings render as <a> directly instead of being
   // wrapped in <a><button></button></a> which is invalid HTML
   const buttonLinkSettings = layer.variables?.link;
@@ -5013,6 +5058,14 @@ export function layerToHtml(
     const hasWidth = cls.some((c: string) => /^w-/.test(c.split(':').pop() || ''));
     if (!hasWidth) {
       classesStr = classesStr ? `${classesStr} w-fit` : 'w-fit';
+    }
+  }
+
+  // Rich text kept in a <p> gets the paragraph style on the element itself
+  if (!isTextContentLayer(layer) && tag === 'p' && layer.variables?.text) {
+    const paragraphClasses = getTextStyleClasses(layer.textStyles, 'paragraph');
+    if (paragraphClasses) {
+      classesStr = classesStr ? `${classesStr} ${paragraphClasses}` : paragraphClasses;
     }
   }
 
@@ -5582,7 +5635,7 @@ export function layerToHtml(
         layerDataMap: effectiveLayerDataMap,
         pageCollectionSortedItemIds: pageLinkContext?.pageCollectionSortedItemIds,
       };
-      textContent = renderTiptapToHtml(textVariable.data.content, layer.textStyles, componentRenderer, richTextLinkContext);
+      textContent = renderRichTextDocToHtml(textVariable.data.content, richTextLayout, layer.textStyles, componentRenderer, richTextLinkContext);
       isRichText = true;
     }
   }

@@ -31,7 +31,7 @@ import { toast } from 'sonner';
 import { resolveInlineVariablesFromData } from '@/lib/inline-variables';
 import { hasPaginationVariables, paginationTextVariableToTemplate, resolvePaginationTextVariable } from '@/lib/pagination-text-utils';
 import { renderRichText, hasBlockElementsWithInlineVariables, getTextStyleClasses, flattenTiptapParagraphs, type RichTextLinkContext, type RenderComponentBlockFn } from '@/lib/text-format-utils';
-import { hasComponentOrVariable, extractPlainTextFromTiptap } from '@/lib/tiptap-utils';
+import { hasComponentOrVariable, extractPlainTextFromTiptap, RESTRICTIVE_BLOCK_TAGS } from '@/lib/tiptap-utils';
 import LayerContextMenu from '@/app/(builder)/ycode/components/LayerContextMenu';
 import CanvasTextEditor from '@/app/(builder)/ycode/components/CanvasTextEditor';
 import { useComponentsStore } from '@/stores/useComponentsStore';
@@ -700,8 +700,7 @@ const LayerItemImpl: React.FC<{
   const textVariable = layer.variables?.text;
   let useSpanForParagraphs = false;
 
-  const restrictiveBlockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'button'];
-  const isRestrictiveTag = restrictiveBlockTags.includes(htmlTag);
+  const isRestrictiveTag = RESTRICTIVE_BLOCK_TAGS.includes(htmlTag);
 
   if (isRestrictiveTag) {
     let hasLists = false;
