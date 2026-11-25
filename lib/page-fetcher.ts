@@ -2330,9 +2330,10 @@ async function buildCollectionCache(
   const client = await getSupabaseAdmin();
   if (!client) return empty;
 
-  // Warm direct DB connection in parallel so first-hit value queries don't pay
-  // connection setup cost on the critical path.
-  const warmKnexPromise = getKnexClient()
+  // Warm the direct DB connection used when the value RPC is unavailable.
+  // Not awaited: values normally load through the RPC, so waiting would only
+  // add the connection setup to the critical path.
+  void getKnexClient()
     .then(knex => knex.raw('select 1'))
     .catch(() => null);
 
@@ -2455,8 +2456,6 @@ async function buildCollectionCache(
   }
 
   // Phase 3: Fetch values — filter by bound field IDs when available
-  await warmKnexPromise;
-
   // Partition items: bound primary (have field filter) vs unbound primary (optionsSource etc.) vs ref
   const boundPrimaryItemIds: string[] = [];
   const unboundPrimaryItemIds: string[] = [];
