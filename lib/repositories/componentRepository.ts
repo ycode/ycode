@@ -8,6 +8,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { normalizeComponentFolder } from '@/lib/component-folder-utils';
+import { getComponentVariantLayers } from '@/lib/component-variant-utils';
 import {
   displayChangeName,
   sortUnpublishedChanges,
@@ -39,6 +40,10 @@ export interface CreateComponentData {
 function defaultVariantsFromLayers(layers: Layer[]): ComponentVariant[] {
   return [{ id: generateId('cmpvar'), name: 'Default', layers }];
 }
+
+/** Every column except `layers`, which duplicates `variants[0].layers` */
+const COMPONENT_COLUMNS_WITHOUT_LAYERS =
+  'id, name, variants, variables, content_hash, is_published, thumbnail_url, folder, created_at, updated_at, deleted_at';
 
 /**
  * Get all components (draft by default, excludes soft deleted)
@@ -115,7 +120,8 @@ export async function getComponentById(id: string, isPublished: boolean = false)
 
 /**
  * Get multiple components by IDs (drafts by default, excludes soft deleted)
- * Returns a map of component ID to component for quick lookup
+ * Returns a map of component ID to component for quick lookup.
+ * `layers` is derived from the first variant instead of being downloaded twice.
  */
 export async function getComponentsByIds(
   ids: string[],
@@ -131,21 +137,36 @@ export async function getComponentsByIds(
     return {};
   }
 
-  const { data, error } = await client
+  const selectByIds = (columns: string) => client
     .from('components')
-    .select('*')
+    .select(columns)
     .in('id', ids)
     .eq('is_published', isPublished)
     .is('deleted_at', null);
 
-  if (error) {
-    throw new Error(`Failed to fetch components: ${error.message}`);
+  // Rows without variants (saved before variants existed, or inserted as raw
+  // template data) still keep their tree in `layers` only.
+  const [
+    { data, error },
+    { data: legacyRows, error: legacyError },
+  ] = await Promise.all([
+    selectByIds(COMPONENT_COLUMNS_WITHOUT_LAYERS),
+    selectByIds('id, layers').eq('variants', '[]'),
+  ]);
+
+  if (error || legacyError) {
+    throw new Error(`Failed to fetch components: ${(error || legacyError)!.message}`);
   }
 
-  // Convert array to map for O(1) lookup
+  const legacyLayers = new Map(
+    ((legacyRows || []) as unknown as Pick<Component, 'id' | 'layers'>[]).map(row => [row.id, row.layers])
+  );
   const componentMap: Record<string, Component> = {};
-  data?.forEach(component => {
-    componentMap[component.id] = component;
+  ((data || []) as unknown as Component[]).forEach(component => {
+    componentMap[component.id] = {
+      ...component,
+      layers: getComponentVariantLayers({ ...component, layers: legacyLayers.get(component.id) ?? [] }),
+    };
   });
 
   return componentMap;
