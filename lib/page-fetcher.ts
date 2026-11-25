@@ -437,7 +437,7 @@ export async function ensureCmsTranslations(
  * @param slugFieldId - Field ID for the slug field
  * @param slugValue - The slug value to match (could be original or translated)
  * @param isPublished - Get draft (false) or published (true) version
- * @param collectionFields - Collection fields (needed to build translation keys)
+ * @param collectionFields - Collection fields, or their pending load (needed to build translation keys)
  * @param locale - Current locale (for translated slug lookup)
  * @param translations - Translations map (for translated slug lookup)
  */
@@ -446,7 +446,7 @@ async function getCollectionItemBySlug(
   slugFieldId: string,
   slugValue: string,
   isPublished: boolean,
-  collectionFields?: CollectionField[],
+  collectionFields?: CollectionField[] | Promise<CollectionField[]>,
   locale?: Locale | null,
   translations?: Record<string, Translation>,
   tenantId?: string
@@ -477,9 +477,22 @@ async function getCollectionItemBySlug(
       return { ...item, values };
     };
 
+    // Look up the original slug right away so it doesn't wait for the fields;
+    // a translated match below still takes precedence.
+    const originalItemIdLoad = supabase
+      .from('collection_item_values')
+      .select('item_id')
+      .eq('field_id', slugFieldId)
+      .eq('value', slugValue)
+      .eq('is_published', isPublished)
+      .is('deleted_at', null)
+      .limit(1)
+      .single()
+      .then(({ data, error }) => (error || !data ? null : data.item_id as string));
+
     // If locale and translations are provided, try to find item by translated slug first
     if (locale && translations && collectionFields) {
-      const slugField = collectionFields.find(f => f.id === slugFieldId);
+      const slugField = (await collectionFields).find(f => f.id === slugFieldId);
 
       if (slugField) {
         // Build content_key for the slug field
@@ -500,21 +513,12 @@ async function getCollectionItemBySlug(
     }
 
     // Fall back to original slug lookup (no translation or translation not found)
-    const { data: valueData, error: valueError } = await supabase
-      .from('collection_item_values')
-      .select('item_id')
-      .eq('field_id', slugFieldId)
-      .eq('value', slugValue)
-      .eq('is_published', isPublished)
-      .is('deleted_at', null)
-      .limit(1)
-      .single();
-
-    if (valueError || !valueData) {
+    const originalItemId = await originalItemIdLoad;
+    if (!originalItemId) {
       return null;
     }
 
-    return await loadVerifiedItem(valueData.item_id);
+    return await loadVerifiedItem(originalItemId);
   } catch (error) {
     console.error('Failed to fetch collection item by slug:', error);
     return null;
@@ -659,13 +663,18 @@ async function fetchPageByPathInternal(
             const { collection_id: collectionId, slug_field_id: slugFieldId } = cmsSettings;
             const slugValue = extractedSlug;
 
+            // The layers only depend on the page, so they load while the item is
+            // looked up. Components wait for the item, so an unknown slug costs
+            // one layers read rather than the whole component tree.
+            const layersLoad = resolveLayers ? fetchPageLayersRow(supabase, dynamicPage.id, isPublished) : undefined;
+
             // Collection fields are needed for translated slug lookup (and custom
-            // code placeholders); without a locale they load alongside the item.
+            // code placeholders); they load alongside the item.
             const fieldsLoad = getFieldsByCollectionId(collectionId, isPublished, { excludeComputed: true });
             const itemLoad = detectedLocale && translations
-              ? fieldsLoad.then(fields => getCollectionItemBySlug(
-                collectionId, slugFieldId, slugValue, isPublished, fields, detectedLocale, translations, tenantId
-              ))
+              ? getCollectionItemBySlug(
+                collectionId, slugFieldId, slugValue, isPublished, fieldsLoad, detectedLocale, translations, tenantId
+              )
               : getCollectionItemBySlug(collectionId, slugFieldId, slugValue, isPublished, undefined, null, undefined, tenantId);
             const [collectionFields, collectionItem] = await Promise.all([fieldsLoad, itemLoad]);
 
@@ -728,7 +737,7 @@ async function fetchPageByPathInternal(
               [dynamicPageGlobals, dynamicPageGlobalsMeta],
             ] = await Promise.all([
               pageLoad,
-              fetchPageLayersWithComponents(supabase, dynamicPage.id, isPublished, components),
+              fetchPageLayersWithComponents(supabase, dynamicPage.id, isPublished, components, layersLoad),
               translatedItemValuesLoad,
               buildGlobalsMaps(isPublished),
               pageTranslationsLoad,
@@ -1161,14 +1170,9 @@ async function fetchPageRow(supabase: SupabaseClient, pageId: string, isPublishe
   return (data as Page | null) ?? null;
 }
 
-/** Fetch a page's latest layers row, then load the components those layers reference */
-async function fetchPageLayersWithComponents(
-  supabase: SupabaseClient,
-  pageId: string,
-  isPublished: boolean,
-  components: Component[]
-) {
-  const result = await supabase
+/** Fetch a page's latest layers row */
+async function fetchPageLayersRow(supabase: SupabaseClient, pageId: string, isPublished: boolean) {
+  return supabase
     .from('page_layers')
     .select('*')
     .eq('page_id', pageId)
@@ -1177,6 +1181,20 @@ async function fetchPageLayersWithComponents(
     .order('created_at', { ascending: false })
     .limit(1)
     .single();
+}
+
+/**
+ * Fetch a page's latest layers row (or await one already in flight), then load
+ * the components those layers reference
+ */
+async function fetchPageLayersWithComponents(
+  supabase: SupabaseClient,
+  pageId: string,
+  isPublished: boolean,
+  components: Component[],
+  layersLoad?: ReturnType<typeof fetchPageLayersRow>
+) {
+  const result = await (layersLoad ?? fetchPageLayersRow(supabase, pageId, isPublished));
   if (!result.error) await ensureReferencedComponents(components, result.data?.layers);
   return result;
 }
