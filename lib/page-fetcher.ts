@@ -437,7 +437,7 @@ export async function ensureCmsTranslations(
  * @param slugFieldId - Field ID for the slug field
  * @param slugValue - The slug value to match (could be original or translated)
  * @param isPublished - Get draft (false) or published (true) version
- * @param collectionFields - Collection fields (needed to build translation keys)
+ * @param collectionFields - Collection fields, or their pending load (needed to build translation keys)
  * @param locale - Current locale (for translated slug lookup)
  * @param translations - Translations map (for translated slug lookup)
  */
@@ -446,7 +446,7 @@ async function getCollectionItemBySlug(
   slugFieldId: string,
   slugValue: string,
   isPublished: boolean,
-  collectionFields?: CollectionField[],
+  collectionFields?: CollectionField[] | Promise<CollectionField[]>,
   locale?: Locale | null,
   translations?: Record<string, Translation>,
   tenantId?: string
@@ -477,9 +477,22 @@ async function getCollectionItemBySlug(
       return { ...item, values };
     };
 
+    // Look up the original slug right away so it doesn't wait for the fields;
+    // a translated match below still takes precedence.
+    const originalItemIdLoad = supabase
+      .from('collection_item_values')
+      .select('item_id')
+      .eq('field_id', slugFieldId)
+      .eq('value', slugValue)
+      .eq('is_published', isPublished)
+      .is('deleted_at', null)
+      .limit(1)
+      .single()
+      .then(({ data, error }) => (error || !data ? null : data.item_id as string));
+
     // If locale and translations are provided, try to find item by translated slug first
     if (locale && translations && collectionFields) {
-      const slugField = collectionFields.find(f => f.id === slugFieldId);
+      const slugField = (await collectionFields).find(f => f.id === slugFieldId);
 
       if (slugField) {
         // Build content_key for the slug field
@@ -500,21 +513,12 @@ async function getCollectionItemBySlug(
     }
 
     // Fall back to original slug lookup (no translation or translation not found)
-    const { data: valueData, error: valueError } = await supabase
-      .from('collection_item_values')
-      .select('item_id')
-      .eq('field_id', slugFieldId)
-      .eq('value', slugValue)
-      .eq('is_published', isPublished)
-      .is('deleted_at', null)
-      .limit(1)
-      .single();
-
-    if (valueError || !valueData) {
+    const originalItemId = await originalItemIdLoad;
+    if (!originalItemId) {
       return null;
     }
 
-    return await loadVerifiedItem(valueData.item_id);
+    return await loadVerifiedItem(originalItemId);
   } catch (error) {
     console.error('Failed to fetch collection item by slug:', error);
     return null;
@@ -659,13 +663,18 @@ async function fetchPageByPathInternal(
             const { collection_id: collectionId, slug_field_id: slugFieldId } = cmsSettings;
             const slugValue = extractedSlug;
 
+            // The layers only depend on the page, so they load while the item is
+            // looked up. Components wait for the item, so an unknown slug costs
+            // one layers read rather than the whole component tree.
+            const layersLoad = resolveLayers ? fetchPageLayersRow(supabase, dynamicPage.id, isPublished) : undefined;
+
             // Collection fields are needed for translated slug lookup (and custom
-            // code placeholders); without a locale they load alongside the item.
+            // code placeholders); they load alongside the item.
             const fieldsLoad = getFieldsByCollectionId(collectionId, isPublished, { excludeComputed: true });
             const itemLoad = detectedLocale && translations
-              ? fieldsLoad.then(fields => getCollectionItemBySlug(
-                collectionId, slugFieldId, slugValue, isPublished, fields, detectedLocale, translations, tenantId
-              ))
+              ? getCollectionItemBySlug(
+                collectionId, slugFieldId, slugValue, isPublished, fieldsLoad, detectedLocale, translations, tenantId
+              )
               : getCollectionItemBySlug(collectionId, slugFieldId, slugValue, isPublished, undefined, null, undefined, tenantId);
             const [collectionFields, collectionItem] = await Promise.all([fieldsLoad, itemLoad]);
 
@@ -720,7 +729,7 @@ async function fetchPageByPathInternal(
               };
             }
 
-            const itemOrderLoad = loadCollectionItemOrder(collectionId, collectionFields, cmsSettings.next_previous, isPublished);
+            const itemOrderLoad = loadCollectionItemOrder(collectionId, collectionFields, cmsSettings.next_previous, isPublished, tenantId);
             const [
               matchingPage,
               { data: pageLayers, error: layersError },
@@ -728,9 +737,9 @@ async function fetchPageByPathInternal(
               [dynamicPageGlobals, dynamicPageGlobalsMeta],
             ] = await Promise.all([
               pageLoad,
-              fetchPageLayersWithComponents(supabase, dynamicPage.id, isPublished, components),
+              fetchPageLayersWithComponents(supabase, dynamicPage.id, isPublished, components, layersLoad),
               translatedItemValuesLoad,
-              Promise.all([buildGlobalsDataMap(isPublished), buildGlobalsMetaDataMap(isPublished)]),
+              buildGlobalsMaps(isPublished),
               pageTranslationsLoad,
             ]);
 
@@ -1161,14 +1170,9 @@ async function fetchPageRow(supabase: SupabaseClient, pageId: string, isPublishe
   return (data as Page | null) ?? null;
 }
 
-/** Fetch a page's latest layers row, then load the components those layers reference */
-async function fetchPageLayersWithComponents(
-  supabase: SupabaseClient,
-  pageId: string,
-  isPublished: boolean,
-  components: Component[]
-) {
-  const result = await supabase
+/** Fetch a page's latest layers row */
+async function fetchPageLayersRow(supabase: SupabaseClient, pageId: string, isPublished: boolean) {
+  return supabase
     .from('page_layers')
     .select('*')
     .eq('page_id', pageId)
@@ -1177,6 +1181,20 @@ async function fetchPageLayersWithComponents(
     .order('created_at', { ascending: false })
     .limit(1)
     .single();
+}
+
+/**
+ * Fetch a page's latest layers row (or await one already in flight), then load
+ * the components those layers reference
+ */
+async function fetchPageLayersWithComponents(
+  supabase: SupabaseClient,
+  pageId: string,
+  isPublished: boolean,
+  components: Component[],
+  layersLoad?: ReturnType<typeof fetchPageLayersRow>
+) {
+  const result = await (layersLoad ?? fetchPageLayersRow(supabase, pageId, isPublished));
   if (!result.error) await ensureReferencedComponents(components, result.data?.layers);
   return result;
 }
@@ -1196,7 +1214,8 @@ async function loadCollectionItemOrder(
   collectionId: string,
   collectionFields: CollectionField[],
   nextPrevious: NonNullable<PageSettings['cms']>['next_previous'],
-  isPublished: boolean
+  isPublished: boolean,
+  tenantId?: string
 ): Promise<{ sortedItemIds?: string[]; sortedItemSlugs?: Record<string, string> }> {
   try {
     const slugFieldId = collectionFields.find(f => f.key === 'slug')?.id;
@@ -1204,9 +1223,11 @@ async function loadCollectionItemOrder(
     const nextPreviousSortBy = nextPrevious?.sort_by || idFieldId || 'manual';
     const neededFieldIds = [slugFieldId, nextPreviousSortBy === 'manual' ? undefined : nextPreviousSortBy]
       .filter((id): id is string => !!id);
-    const { items: collectionItems } = await getItemsByCollectionId(collectionId, isPublished);
+    const fieldTypes: Record<string, string> = Object.fromEntries(collectionFields.map(f => [f.id, f.type]));
+    const knownFieldTypes = neededFieldIds.every(id => id in fieldTypes) ? fieldTypes : undefined;
+    const { items: collectionItems } = await getItemsByCollectionId(collectionId, isPublished, undefined, tenantId);
     const neededValues = neededFieldIds.length > 0 && collectionItems.length > 0
-      ? await getValuesByItemIds(collectionItems.map(i => i.id), isPublished, undefined, neededFieldIds)
+      ? await getValuesByItemIds(collectionItems.map(i => i.id), isPublished, knownFieldTypes, neededFieldIds, tenantId)
       : {};
     const orderedItems = sortItemsForNextPrevious(
       collectionItems.map(item => ({ ...item, values: neededValues[item.id] || {} })),
@@ -1440,25 +1461,19 @@ async function batchResolveReferenceFields(
  * @returns Layer with resolved field values
  */
 /**
- * Build a flat `globalId -> value` map of site-wide global variables for the
- * given publish mode. Used to merge globals into collection/page item values so
- * global-source bindings resolve at build time (published/preview SSR).
+ * Build the flat `globalId -> value` map and the metadata map of site-wide
+ * global variables from one query. Used to merge globals into collection/page
+ * item values so global-source bindings resolve at build time (published/preview SSR).
  */
-async function buildGlobalsDataMap(isPublished: boolean): Promise<Record<string, string>> {
+async function buildGlobalsMaps(
+  isPublished: boolean
+): Promise<[Record<string, string>, Record<string, GlobalFieldMeta>]> {
   try {
-    return buildGlobalsValueMap(await getAllGlobalVariables(isPublished));
+    const globals = await getAllGlobalVariables(isPublished);
+    return [buildGlobalsValueMap(globals), buildGlobalsMetaMap(globals)];
   } catch (error) {
     console.error('[page-fetcher] Failed to load global variables:', error);
-    return {};
-  }
-}
-
-async function buildGlobalsMetaDataMap(isPublished: boolean): Promise<Record<string, GlobalFieldMeta>> {
-  try {
-    return buildGlobalsMetaMap(await getAllGlobalVariables(isPublished));
-  } catch (error) {
-    console.error('[page-fetcher] Failed to load global variable metadata:', error);
-    return {};
+    return [{}, {}];
   }
 }
 
@@ -2333,38 +2348,33 @@ async function buildCollectionCache(
   const client = await getSupabaseAdmin();
   if (!client) return empty;
 
-  // Warm direct DB connection in parallel so first-hit value queries don't pay
-  // connection setup cost on the critical path.
-  const warmKnexPromise = getKnexClient()
+  // Warm the direct DB connection used when the value RPC is unavailable.
+  // Not awaited: values normally load through the RPC, so waiting would only
+  // add the connection setup to the critical path.
+  void getKnexClient()
     .then(knex => knex.raw('select 1'))
     .catch(() => null);
 
   const ids = Array.from(collectionIds);
 
-  // Phase 1: Fetch fields for all collections (needed to discover reference collections)
-  const { data: nonComputedFieldsData } = await client
+  // Phase 1: Fetch fields for all collections (needed to discover reference collections).
+  // Count fields are computed but their config is needed during render so layers
+  // bound to a count value can resolve correctly. Other computed types (e.g.
+  // status) are excluded. Count fields stay after the regular fields.
+  const { data: phaseOneFields } = await client
     .from('collection_fields')
     .select('*')
     .in('collection_id', ids)
     .eq('is_published', isPublished)
     .is('deleted_at', null)
-    .eq('is_computed', false)
+    .or('is_computed.eq.false,type.eq.count')
     .order('order', { ascending: true })
     .limit(5000);
 
-  // Count fields are computed but their config is needed during render so layers
-  // bound to a count value can resolve correctly. Pull them in alongside the
-  // regular fields. Other computed types (e.g. status) are still excluded.
-  const { data: countFieldsData } = await client
-    .from('collection_fields')
-    .select('*')
-    .in('collection_id', ids)
-    .eq('is_published', isPublished)
-    .is('deleted_at', null)
-    .eq('type', 'count')
-    .limit(5000);
-
-  const fieldsData = [...(nonComputedFieldsData || []), ...(countFieldsData || [])];
+  const fieldsData = [
+    ...(phaseOneFields || []).filter(f => !f.is_computed),
+    ...(phaseOneFields || []).filter(f => f.is_computed),
+  ];
 
   // Discover referenced collections so we can pre-fetch their data too.
   // When boundFieldIds is supplied, only follow reference fields that are bound.
@@ -2446,7 +2456,7 @@ async function buildCollectionCache(
       .in('collection_id', refCollectionIds)
       .eq('is_published', isPublished)
       .is('deleted_at', null)
-      .eq('is_computed', false)
+      .or('is_computed.eq.false,type.eq.count')
       .order('order', { ascending: true })
       .limit(5000)
     : Promise.resolve({ data: [] as any[] });
@@ -2464,8 +2474,6 @@ async function buildCollectionCache(
   }
 
   // Phase 3: Fetch values — filter by bound field IDs when available
-  await warmKnexPromise;
-
   // Partition items: bound primary (have field filter) vs unbound primary (optionsSource etc.) vs ref
   const boundPrimaryItemIds: string[] = [];
   const unboundPrimaryItemIds: string[] = [];
@@ -2655,10 +2663,7 @@ export async function resolveCollectionLayers(
 
   // Fetch site-wide globals once for the whole tree so global-source bindings
   // inside collection loops resolve at build time. Keyed by id (== field_id).
-  const [globalsData, globalsMeta] = await Promise.all([
-    buildGlobalsDataMap(isPublished),
-    buildGlobalsMetaDataMap(isPublished),
-  ]);
+  const globalsLoad = buildGlobalsMaps(isPublished);
 
   // Scan all collection layers to determine which field IDs are actually used in templates
   const allCollectionIds = collectAllCollectionIds(layers);
@@ -2700,22 +2705,32 @@ export async function resolveCollectionLayers(
   scanCollectionLayersForBounds(layers);
 
   // Pre-fetch all collection data in bulk, filtered to bound fields
-  const cache = await buildCollectionCache(
-    allCollectionIds,
-    isPublished,
-    mergedBoundFieldIds.size > 0 ? mergedBoundFieldIds : undefined,
-    mergedBoundFieldPaths.size > 0 ? mergedBoundFieldPaths : undefined,
-    scannedCollectionIds.size > 0 ? scannedCollectionIds : undefined,
-    collectDecisionFieldIds(layers),
-  );
+  const [cache, [globalsData, globalsMeta]] = await Promise.all([
+    buildCollectionCache(
+      allCollectionIds,
+      isPublished,
+      mergedBoundFieldIds.size > 0 ? mergedBoundFieldIds : undefined,
+      mergedBoundFieldPaths.size > 0 ? mergedBoundFieldPaths : undefined,
+      scannedCollectionIds.size > 0 ? scannedCollectionIds : undefined,
+      collectDecisionFieldIds(layers),
+    ),
+    globalsLoad,
+  ]);
 
   // Inject computed count field values into the cached items so layers bound
   // to a count field render the live number on SSR. Counts always reflect
   // published child items, regardless of the surrounding `isPublished` mode.
-  for (const [collId, items] of cache.itemsByCollection) {
-    if (items.length === 0) continue;
-    await enrichItemsWithCountValues(items, collId, isPublished);
+  const cachedFieldsById = new Map<string, CollectionField>();
+  for (const fields of cache.fieldsByCollection.values()) {
+    for (const field of fields) cachedFieldsById.set(field.id, field);
   }
+  await Promise.all(
+    Array.from(cache.itemsByCollection)
+      .filter(([, items]) => items.length > 0)
+      .map(([collId, items]) => enrichItemsWithCountValues(
+        items, collId, isPublished, cache.fieldsByCollection.get(collId) ?? [], cachedFieldsById
+      ))
+  );
 
   const resolveLayer = async (
     layer: Layer,
@@ -4013,17 +4028,14 @@ export async function renderCollectionItemsToHtml(
   // attributes are preserved. Falls back to a generic wrapper otherwise.
   collectionLayer?: Omit<Layer, 'children'>,
 ): Promise<string> {
-  // Fetch collection fields, timezone, and map tokens in parallel
-  const [collectionFields, timezoneRaw] = await Promise.all([
+  // Fetch collection fields, timezone, map tokens, and globals in parallel
+  const [collectionFields, timezoneRaw, , [globalsData, globalsMeta]] = await Promise.all([
     getFieldsByCollectionId(collectionId, isPublished, { excludeComputed: true }),
     getSettingByKey('timezone'),
     ensureMapTokens(),
+    buildGlobalsMaps(isPublished),
   ]);
   const htmlTimezone = (timezoneRaw as string | null) || 'UTC';
-  const [globalsData, globalsMeta] = await Promise.all([
-    buildGlobalsDataMap(isPublished),
-    buildGlobalsMetaDataMap(isPublished),
-  ]);
 
   // Augment the scoped translation map with CMS content for the items being
   // rendered so `applyCmsTranslations` (here and in nested resolution) finds
