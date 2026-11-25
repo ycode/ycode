@@ -1,6 +1,6 @@
 import { revalidateTag, revalidatePath } from 'next/cache';
 import { invalidateByTag } from '@vercel/functions';
-import { GLOBAL_SETTINGS_TAG } from '@/lib/cache-tags';
+import { buildRedirectsTag, GLOBAL_SETTINGS_TAG } from '@/lib/cache-tags';
 import { getSupabaseAdmin, getSupabaseConfig } from '@/lib/supabase-server';
 import { buildSlugPath, normalizeSlugSegment } from '@/lib/page-utils';
 import type { Page, PageFolder } from '@/types';
@@ -129,6 +129,26 @@ export async function invalidatePages(routePaths: string[]): Promise<boolean> {
     console.error('❌ [Cache] Invalidation error:', error);
     return false;
   }
+}
+
+/**
+ * Purge after a redirects change: the cached redirects list plus the routes
+ * whose redirect changed. `null` (a pattern redirect changed) purges every page.
+ * @param changedPaths - Request paths from getChangedRedirectPaths
+ */
+export async function invalidateRedirects(changedPaths: string[] | null): Promise<void> {
+  if (!changedPaths) {
+    await clearAllCache();
+    return;
+  }
+
+  const tag = buildRedirectsTag();
+  if (process.env.VERCEL === '1') {
+    await invalidateByTag(tag);
+  } else {
+    revalidateTag(tag, { expire: 0 });
+  }
+  await invalidatePages(changedPaths.map((path) => path.replace(/^\/+/, '')));
 }
 
 /**
