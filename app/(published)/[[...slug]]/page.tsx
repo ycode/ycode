@@ -5,7 +5,7 @@ import { addCacheTag } from '@vercel/functions';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { getSupabaseAdmin } from '@/lib/supabase-server';
-import { GLOBAL_SETTINGS_TAG } from '@/lib/cache-tags';
+import { buildRedirectsTag, GLOBAL_SETTINGS_TAG } from '@/lib/cache-tags';
 import { buildSlugPath } from '@/lib/page-utils';
 import { generatePageMetadata, fetchGlobalPageSettings } from '@/lib/generate-page-metadata';
 import { generateCachedErrorPageMetadata } from '@/lib/not-found-metadata';
@@ -159,8 +159,8 @@ async function fetchCachedRedirects(): Promise<RedirectType[] | null> {
   try {
     return await unstable_cache(
       async () => getSettingByKey('redirects') as Promise<RedirectType[] | null>,
-      ['data-for-redirects'],
-      { tags: ['all-pages'], revalidate: false }
+      ['data-for-redirects-v2'],
+      { tags: ['all-pages', buildRedirectsTag()], revalidate: false }
     )();
   } catch {
     return null;

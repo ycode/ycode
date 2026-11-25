@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAgentSecretSettingKey } from '@/lib/agent/config';
+import { getChangedRedirectPaths } from '@/lib/redirect-utils';
 import { getSettingByKey, setSetting } from '@/lib/repositories/settingsRepository';
-import { clearAllCache, getAllPublishedRoutes, warmRoutes } from '@/lib/services/cacheService';
+import { clearAllCache, getAllPublishedRoutes, invalidateRedirects, warmRoutes } from '@/lib/services/cacheService';
+import type { Redirect } from '@/types';
+
+const REDIRECTS_SETTING_KEY = 'redirects';
 
 /**
  * Setting keys that don't affect public-page rendering and therefore should
@@ -95,11 +99,19 @@ export async function PUT(
       );
     }
 
+    const previousRedirects = key === REDIRECTS_SETTING_KEY
+      ? await getSettingByKey(key) as Redirect[] | null
+      : null;
+
     await setSetting(key, value);
 
-    // Skip cache invalidation for draft/internal settings so builder
-    // autosaves don't purge the public CDN cache on every edit.
-    if (!isDraftOnlySettingKey(key)) {
+    if (key === REDIRECTS_SETTING_KEY) {
+      // A redirect only changes the response of its source path. Purging and
+      // warming every route on each saved redirect overloads large sites.
+      await invalidateRedirects(getChangedRedirectPaths(previousRedirects, value));
+    } else if (!isDraftOnlySettingKey(key)) {
+      // Skip cache invalidation for draft/internal settings so builder
+      // autosaves don't purge the public CDN cache on every edit.
       await clearAllCache();
 
       // Prime the cache so the first visit to any public page after this

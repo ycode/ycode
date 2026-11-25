@@ -20,6 +20,14 @@ export function buildGlobalSettingsTag(tenantId?: string | null): string {
 }
 
 /**
+ * Tag for the cached redirects list. Tenant-scoped when a tenantId is given.
+ * Lets a redirects change refresh it without purging every page.
+ */
+export function buildRedirectsTag(tenantId?: string | null): string {
+  return tenantId ? `t-${tenantId}-redirects` : 'redirects';
+}
+
+/**
  * Tag that sweeps every page's data-cache entry. Tenant-scoped when a tenantId
  * is given so a tenant's publish never invalidates another tenant's cache.
  */
