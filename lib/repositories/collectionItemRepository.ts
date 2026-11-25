@@ -117,9 +117,10 @@ export interface UpdateCollectionItemData {
 export async function getItemsByCollectionId(
   collection_id: string,
   is_published: boolean = false,
-  filters?: QueryFilters
+  filters?: QueryFilters,
+  tenantId?: string
 ): Promise<{ items: CollectionItem[], total: number }> {
-  const client = await getSupabaseAdmin();
+  const client = await getSupabaseAdmin(tenantId);
 
   if (!client) {
     throw new Error('Supabase client not configured');

@@ -187,8 +187,9 @@ export async function getValuesByItemIds(
   is_published: boolean = false,
   knownFieldTypes?: Record<string, string>,
   fieldIds?: string[],
+  tenantId?: string,
 ): Promise<Record<string, Record<string, any>>> {
-  const client = await getSupabaseAdmin();
+  const client = await getSupabaseAdmin(tenantId);
 
   if (!client) {
     throw new Error('Supabase client not configured');
