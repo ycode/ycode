@@ -28,7 +28,7 @@ import { getPageCssUrl, shouldLinkPageCss } from '@/lib/page-css';
 import { buildGlobalsMetaMap, buildGlobalsValueMap } from '@/lib/collection-field-utils';
 import { buildLocalizedPageUrls, getLocaleSwitchTarget, slimFoldersForLinks, slimPagesForLinks, type LocaleSwitchTarget, type LocalizedDynamicSlug } from '@/lib/page-utils';
 import { clientLinkTranslations, getTranslatableKey } from '@/lib/locale-runtime';
-import { getSlugTranslationsByLocale } from '@/lib/repositories/translationRepository';
+import { loadSlugTranslationsByLocale } from '@/lib/slug-translations-cache';
 import type { Layer, BackgroundsDesign, Component, Page, CollectionItemWithValues, CollectionField, Locale, PageFolder, PasswordProtectionContext, Translation } from '@/types';
 
 interface PageLinkRef { collection_item_id: string; page_id: string }
@@ -556,7 +556,7 @@ export default async function PageRenderer({
             }
             // Only slug rows are needed to build localized URLs for the locale
             // switcher — avoid loading the full CMS-content catalogue per locale.
-            const rows = await getSlugTranslationsByLocale(l.id, usePublishedData);
+            const rows = await loadSlugTranslationsByLocale(l.id, usePublishedData);
             const map: Record<string, Translation> = {};
             for (const t of rows) {
               map[getTranslatableKey(t)] = t;
