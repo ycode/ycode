@@ -11,10 +11,11 @@ import { credentials } from '@/lib/credentials';
 import { getAllPages } from '@/lib/repositories/pageRepository';
 import { getAllPublishedPageFolders } from '@/lib/repositories/pageFolderRepository';
 import { getAllLocales } from '@/lib/repositories/localeRepository';
-import { getSlugTranslationsByLocale } from '@/lib/repositories/translationRepository';
+import { getSlugTranslationsForLocales } from '@/lib/repositories/translationRepository';
 import { getSettingsByKeys } from '@/lib/repositories/settingsRepository';
 import { getItemsByCollectionId } from '@/lib/repositories/collectionItemRepository';
 import { getValuesByItemIds } from '@/lib/repositories/collectionItemValueRepository';
+import { groupTranslationsByLocale, keyTranslations } from '@/lib/locale-runtime';
 import { normalizeSitemapSettings } from '@/lib/sitemap-settings';
 import { generateSitemapUrls, generateSitemapXml } from '@/lib/sitemap-utils';
 import { getRequestOrigin, getSiteBaseUrl } from '@/lib/url-utils';
@@ -75,17 +76,12 @@ export async function GET() {
     // Fetch translations for each locale (always include localized URLs)
     const translationsByLocale = new Map<string, Record<string, Translation>>();
     if (locales.length > 1) {
-      for (const locale of locales) {
-        if (!locale.is_default) {
-          const translations = await getSlugTranslationsByLocale(locale.id, true); // Slug rows only — sitemap builds URLs
-          const translationsMap: Record<string, Translation> = {};
-          for (const t of translations) {
-            // Create key: source_type:source_id:content_key
-            const key = `${t.source_type}:${t.source_id}:${t.content_key}`;
-            translationsMap[key] = t;
-          }
-          translationsByLocale.set(locale.id, translationsMap);
-        }
+      const localeIds = locales.filter(locale => !locale.is_default).map(locale => locale.id);
+      // Slug rows only — sitemap builds URLs
+      const translations = await getSlugTranslationsForLocales(localeIds, true);
+      const rowsByLocale = groupTranslationsByLocale(translations, localeIds);
+      for (const [localeId, rows] of Object.entries(rowsByLocale)) {
+        translationsByLocale.set(localeId, keyTranslations(rows));
       }
     }
 
