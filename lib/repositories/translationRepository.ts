@@ -239,45 +239,33 @@ export async function getCmsTranslationsForItems(
 }
 
 /**
- * Load only slug translations (page / folder / CMS) for a locale. Used by URL
- * builders (hreflang, sitemap, locale switcher) that never read CMS content —
- * avoids pulling the full catalogue just to construct localized URLs.
+ * Load only slug translations (page / folder / CMS) for the given locales in
+ * one paged query. Used by URL builders (hreflang, sitemap, locale switcher)
+ * that never read CMS content — avoids pulling the full catalogue, and avoids
+ * one query per locale on sites with many locales.
  */
-export async function getSlugTranslationsByLocale(
-  localeId: string,
+export async function getSlugTranslationsForLocales(
+  localeIds: string[],
   isPublished: boolean,
   tenantId?: string,
 ): Promise<Translation[]> {
+  if (localeIds.length === 0) return [];
+
   const client = await getSupabaseAdmin(tenantId);
 
   if (!client) {
     throw new Error('Supabase not configured');
   }
 
-  const PAGE_SIZE = 1000;
-  const results: Translation[] = [];
-
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await client
-      .from('translations')
-      .select('*')
-      .eq('locale_id', localeId)
-      .eq('is_published', isPublished)
-      .is('deleted_at', null)
-      .in('content_key', SLUG_CONTENT_KEYS)
-      .order('created_at', { ascending: true })
-      .order('id', { ascending: true })
-      .range(from, from + PAGE_SIZE - 1);
-
-    if (error) {
-      throw new Error(`Failed to fetch slug translations: ${error.message}`);
-    }
-    if (!data || data.length === 0) break;
-    results.push(...(data as Translation[]));
-    if (data.length < PAGE_SIZE) break;
-  }
-
-  return results;
+  return fetchTranslationRows((from, to) => client
+    .from('translations')
+    .select('*')
+    .in('locale_id', localeIds)
+    .eq('is_published', isPublished)
+    .is('deleted_at', null)
+    .in('content_key', SLUG_CONTENT_KEYS)
+    .order('id', { ascending: true })
+    .range(from, to) as unknown as ReturnType<TranslationPageQuery>);
 }
 
 /**

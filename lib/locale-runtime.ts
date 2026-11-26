@@ -24,6 +24,27 @@ export function getTranslatableKey(
 }
 
 /**
+ * Split translation rows by locale. Every id in `localeIds` gets an entry, so
+ * locales without rows map to an empty list.
+ */
+export function groupTranslationsByLocale(
+  rows: Translation[],
+  localeIds: string[],
+): Record<string, Translation[]> {
+  const grouped: Record<string, Translation[]> = {};
+  for (const id of localeIds) grouped[id] = [];
+  for (const row of rows) grouped[row.locale_id]?.push(row);
+  return grouped;
+}
+
+/** Index translation rows by {@link getTranslatableKey}. */
+export function keyTranslations(rows: Translation[]): Record<string, Translation> {
+  const map: Record<string, Translation> = {};
+  for (const row of rows) map[getTranslatableKey(row)] = row;
+  return map;
+}
+
+/**
  * Build a translation key for a layer
  * @param pageId - Page ID
  * @param contentKey - Content key (e.g. `layer:layer-id:text`)

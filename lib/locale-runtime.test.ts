@@ -1,7 +1,40 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { clientLinkTranslations, getTranslationValue, hasTranslationContent } from '@/lib/locale-runtime';
+import {
+  clientLinkTranslations,
+  getTranslationValue,
+  groupTranslationsByLocale,
+  hasTranslationContent,
+  keyTranslations,
+} from '@/lib/locale-runtime';
 import type { Translation } from '@/types';
+
+function slugRow(localeId: string, sourceId: string, value: string): Translation {
+  return {
+    locale_id: localeId,
+    source_type: 'page',
+    source_id: sourceId,
+    content_key: 'slug',
+    content_value: value,
+  } as Translation;
+}
+
+test('groups translation rows by locale, with an entry for every locale', () => {
+  const de = slugRow('de', 'p1', 'ueber-uns');
+  const fr = slugRow('fr', 'p1', 'a-propos');
+  const stray = slugRow('es', 'p1', 'sobre');
+
+  assert.deepEqual(groupTranslationsByLocale([de, fr, stray], ['de', 'fr', 'it']), {
+    de: [de],
+    fr: [fr],
+    it: [],
+  });
+});
+
+test('indexes translation rows by translatable key', () => {
+  const row = slugRow('de', 'p1', 'ueber-uns');
+  assert.deepEqual(keyTranslations([row]), { 'page:p1:slug': row });
+});
 
 const EMPTY_DOC = '{"type":"doc","content":[{"type":"paragraph"}]}';
 const TEXT_DOC = '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Bonjour"}]}]}';

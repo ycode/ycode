@@ -27,8 +27,8 @@ import { getClassesString, hasPasswordFormLayer } from '@/lib/layer-utils';
 import { getPageCssUrl, shouldLinkPageCss } from '@/lib/page-css';
 import { buildGlobalsMetaMap, buildGlobalsValueMap } from '@/lib/collection-field-utils';
 import { buildLocalizedPageUrls, getLocaleSwitchTarget, slimFoldersForLinks, slimPagesForLinks, type LocaleSwitchTarget, type LocalizedDynamicSlug } from '@/lib/page-utils';
-import { clientLinkTranslations, getTranslatableKey } from '@/lib/locale-runtime';
-import { loadSlugTranslationsByLocale } from '@/lib/slug-translations-cache';
+import { clientLinkTranslations, keyTranslations } from '@/lib/locale-runtime';
+import { loadSlugTranslationsForLocales } from '@/lib/slug-translations-cache';
 import type { Layer, BackgroundsDesign, Component, Page, CollectionItemWithValues, CollectionField, Locale, PageFolder, PasswordProtectionContext, Translation } from '@/types';
 
 interface PageLinkRef { collection_item_id: string; page_id: string }
@@ -545,25 +545,20 @@ export default async function PageRenderer({
     const { page: switchPage, collectionItem: switchItem, collectionFields: switchFields = [] } = switchTarget;
     try {
       const translationsByLocale: Record<string, Record<string, Translation>> = {};
-      await Promise.all(
-        availableLocales
-          .filter(l => !l.is_default)
-          .map(async (l) => {
-            // Reuse already-loaded translations for the current locale
-            if (locale && l.id === locale.id && translations) {
-              translationsByLocale[l.id] = translations as Record<string, Translation>;
-              return;
-            }
-            // Only slug rows are needed to build localized URLs for the locale
-            // switcher — avoid loading the full CMS-content catalogue per locale.
-            const rows = await loadSlugTranslationsByLocale(l.id, usePublishedData);
-            const map: Record<string, Translation> = {};
-            for (const t of rows) {
-              map[getTranslatableKey(t)] = t;
-            }
-            translationsByLocale[l.id] = map;
-          })
+      // Reuse already-loaded translations for the current locale
+      const currentLocaleId = locale && !locale.is_default && translations ? locale.id : null;
+      if (currentLocaleId) {
+        translationsByLocale[currentLocaleId] = translations as Record<string, Translation>;
+      }
+      // Only slug rows are needed to build localized URLs for the locale
+      // switcher — avoid loading the full CMS-content catalogue per locale.
+      const rowsByLocale = await loadSlugTranslationsForLocales(
+        availableLocales.filter(l => !l.is_default && l.id !== currentLocaleId).map(l => l.id),
+        usePublishedData,
       );
+      for (const [localeId, rows] of Object.entries(rowsByLocale)) {
+        translationsByLocale[localeId] = keyTranslations(rows);
+      }
 
       // Dynamic pages need the translated CMS item slug per locale
       let dynamicSlug: LocalizedDynamicSlug | null = null;

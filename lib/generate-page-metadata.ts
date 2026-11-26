@@ -16,11 +16,11 @@ import { getAssetById } from '@/lib/repositories/assetRepository';
 import { getAllLocales } from '@/lib/repositories/localeRepository';
 import { getAllPublishedPageFolders } from '@/lib/repositories/pageFolderRepository';
 import { getValuesByItemIds } from '@/lib/repositories/collectionItemValueRepository';
-import { loadSlugTranslationsByLocale } from '@/lib/slug-translations-cache';
+import { loadSlugTranslationsForLocales } from '@/lib/slug-translations-cache';
 import { buildSvgDataUrl, getAssetProxyUrl } from '@/lib/asset-utils';
 import { generateColorVariablesCss } from '@/lib/repositories/colorVariableRepository';
 import { buildPageHreflangAlternates, type HreflangAlternate } from '@/lib/hreflang-utils';
-import { getTranslatableKey, getTranslatedAssetId, getTranslatedText } from '@/lib/locale-runtime';
+import { getTranslatedAssetId, getTranslatedText, keyTranslations } from '@/lib/locale-runtime';
 import { buildAbsolutePageUrl, getSiteBaseUrl } from '@/lib/url-utils';
 
 /**
@@ -200,15 +200,14 @@ const fetchHreflangDataset = cache(async (): Promise<HreflangDataset> => {
   const translationsByLocale = new Map<string, Record<string, Translation>>();
 
   if (locales.length > 1) {
-    await Promise.all(locales.filter(locale => !locale.is_default).map(async (locale) => {
-      // hreflang alternates only need slug rows to build localized URLs.
-      const translations = await loadSlugTranslationsByLocale(locale.id, true);
-      const map: Record<string, Translation> = {};
-      for (const t of translations) {
-        map[getTranslatableKey(t)] = t;
-      }
-      translationsByLocale.set(locale.id, map);
-    }));
+    // hreflang alternates only need slug rows to build localized URLs.
+    const rowsByLocale = await loadSlugTranslationsForLocales(
+      locales.filter(locale => !locale.is_default).map(locale => locale.id),
+      true,
+    );
+    for (const [localeId, rows] of Object.entries(rowsByLocale)) {
+      translationsByLocale.set(localeId, keyTranslations(rows));
+    }
   }
 
   return { locales, folders, translationsByLocale };
