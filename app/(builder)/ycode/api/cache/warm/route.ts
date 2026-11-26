@@ -34,14 +34,23 @@ export async function POST(request: NextRequest) {
     return noCache({ error: 'Invalid JSON' }, 400);
   }
 
-  const { routes, warmed } = (body ?? {}) as { routes?: unknown; warmed?: unknown };
+  const { routes, warmed, runId } = (body ?? {}) as {
+    routes?: unknown;
+    warmed?: unknown;
+    runId?: unknown;
+  };
 
   if (!Array.isArray(routes)) {
     return noCache({ error: 'routes must be an array' }, 400);
   }
 
   const alreadyWarmed = typeof warmed === 'number' && warmed >= 0 ? warmed : 0;
-  const result = await warmRouteChain(routes as string[], alreadyWarmed, request);
+  const result = await warmRouteChain(
+    routes as string[],
+    alreadyWarmed,
+    request,
+    typeof runId === 'string' ? runId : null,
+  );
 
   return noCache({ success: true, ...result });
 }
