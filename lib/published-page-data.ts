@@ -2,7 +2,7 @@ import 'server-only';
 
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
-import { fetchHomepage, fetchPageByPath, reassemblePageData, splitPageData } from '@/lib/page-fetcher';
+import { fetchHomepageOrThrow, fetchPageByPath, reassemblePageData, splitPageData } from '@/lib/page-fetcher';
 import type { PageData, PaginationContext } from '@/lib/page-fetcher';
 
 /**
@@ -52,6 +52,11 @@ export const fetchPublishedPageWithLayers = cache(async (slugPath: string) => {
   return reassemblePageData(core, layers || []);
 });
 
+/**
+ * Fetch the published homepage. Throws when the database cannot be read, so
+ * neither the data cache nor the ISR page stores a failed lookup as the
+ * "Welcome to Ycode" screen; null means the site has no published homepage.
+ */
 export const fetchPublishedHomepage = cache(async () => {
   const tags = ['route-/', 'all-pages'];
   const opts = { tags, revalidate: false as const };
@@ -60,7 +65,7 @@ export const fetchPublishedHomepage = cache(async () => {
   const [core, layers] = await Promise.all([
     unstable_cache(
       async () => {
-        const data = await fetchHomepage(true, paginationContext);
+        const data = await fetchHomepageOrThrow(true, paginationContext);
         if (!data) return null;
         return splitPageData(data as PageData).core;
       },
@@ -69,7 +74,7 @@ export const fetchPublishedHomepage = cache(async () => {
     )(),
     unstable_cache(
       async () => {
-        const data = await fetchHomepage(true, paginationContext);
+        const data = await fetchHomepageOrThrow(true, paginationContext);
         if (!data) return null;
         return splitPageData(data as PageData).layers;
       },

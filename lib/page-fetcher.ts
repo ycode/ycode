@@ -1049,9 +1049,15 @@ export async function fetchErrorPage(
   }
 }
 
+type HomepageData = Pick<PageData, 'page' | 'pageLayers' | 'components' | 'locale' | 'availableLocales' | 'translations' | 'generatedCss'>;
+
+/** PostgREST error code for a `.single()` query that matched no rows */
+const NO_ROWS_ERROR_CODE = 'PGRST116';
+
 /**
  * Fetch homepage (index page at root level)
- * Works for both draft and published pages
+ * Works for both draft and published pages. Returns null both when there is no
+ * homepage and when the lookup fails; use `fetchHomepageOrThrow` to tell them apart.
  * @param isPublished - Whether to fetch published or draft version
  * @param paginationContext - Optional pagination context with page numbers from URL
  * @param preloadedComponents - Optional component list to fill and reuse (loaded on demand when omitted)
@@ -1062,78 +1068,104 @@ export const fetchHomepage = cache(async function fetchHomepage(
   preloadedComponents?: Component[],
   tenantId?: string,
   translations?: Record<string, Translation>
-): Promise<Pick<PageData, 'page' | 'pageLayers' | 'components' | 'locale' | 'availableLocales' | 'translations' | 'generatedCss'> | null> {
+): Promise<HomepageData | null> {
   try {
-    const supabase = await getSupabaseAdmin(tenantId);
-
-    if (!supabase) {
-      return null;
-    }
-
-    // Fetch locales and homepage in parallel
-    const [
-      { data: availableLocales },
-      { data: homepage },
-    ] = await Promise.all([
-      supabase.from('locales').select('*').eq('is_published', isPublished).is('deleted_at', null),
-      supabase.from('pages').select('*').eq('is_index', true).is('page_folder_id', null).eq('is_published', isPublished).is('deleted_at', null).limit(1).single(),
-    ]);
-
-    if (!homepage) {
-      return null;
-    }
-
-    const components = preloadedComponents ?? createOnDemandComponentList(isPublished, tenantId);
-
-    // Get layers for homepage (depends on homepage.id)
-    const [{ data: pageLayers, error: layersError }] = await Promise.all([
-      fetchPageLayersWithComponents(supabase, homepage.id, isPublished, components),
-      ensurePageTranslations(translations, homepage.id),
-    ]);
-
-    if (layersError) {
-      return null;
-    }
-
-    // Translate component-instance override values before resolving components
-    // so per-instance translations are applied through the override pipeline.
-    const localized = translateInstanceOverrides(
-      pageLayers?.layers || [],
-      homepage.id,
-      components,
-      translations,
-      { includeIncomplete: !isPublished }
-    );
-
-    const layersWithComponents = resolveComponents(localized.layers, localized.components);
-
-    // Resolve collection layers server-side (for both draft and published)
-    let resolvedLayers = layersWithComponents.length > 0
-      ? await resolveCollectionLayers(layersWithComponents, isPublished, undefined, paginationContext, translations)
-      : [];
-
-    // Resolve collections inside rich text embedded components
-    resolvedLayers = await resolveRichTextCollections(resolvedLayers, components, isPublished, translations);
-
-    // Resolve all AssetVariables to URLs server-side (prevents client-side API calls)
-    const resolved = await resolveAllAssets(resolvedLayers, isPublished, components);
-    resolvedLayers = resolved.layers;
-
-    return {
-      page: homepage,
-      pageLayers: {
-        ...pageLayers,
-        layers: resolvedLayers,
-      },
-      components,
-      locale: null,
-      availableLocales: availableLocales as Locale[] || [],
-      translations: translations || {},
-      generatedCss: pageLayers?.generated_css || null,
-    };
-  } catch (error) {
+    return await fetchHomepageOrThrow(isPublished, paginationContext, preloadedComponents, tenantId, translations);
+  } catch {
     return null;
   }
+});
+
+/**
+ * Same as `fetchHomepage`, but throws when the database cannot be read and
+ * returns null only when the site has no homepage. Use it wherever the result
+ * is cached, so a timeout is never stored as "this site has no homepage".
+ */
+export const fetchHomepageOrThrow = cache(async function fetchHomepageOrThrow(
+  isPublished: boolean,
+  paginationContext?: PaginationContext,
+  preloadedComponents?: Component[],
+  tenantId?: string,
+  translations?: Record<string, Translation>
+): Promise<HomepageData | null> {
+  const supabase = await getSupabaseAdmin(tenantId);
+
+  if (!supabase) {
+    throw new Error('Supabase not configured');
+  }
+
+  // Fetch locales and homepage in parallel
+  const [
+    { data: availableLocales, error: localesError },
+    { data: homepage, error: homepageError },
+  ] = await Promise.all([
+    supabase.from('locales').select('*').eq('is_published', isPublished).is('deleted_at', null),
+    supabase.from('pages').select('*').eq('is_index', true).is('page_folder_id', null).eq('is_published', isPublished).is('deleted_at', null).limit(1).single(),
+  ]);
+
+  if (homepageError && homepageError.code !== NO_ROWS_ERROR_CODE) {
+    throw new Error(`Failed to fetch homepage: ${homepageError.message}`);
+  }
+
+  if (localesError) {
+    throw new Error(`Failed to fetch locales: ${localesError.message}`);
+  }
+
+  if (!homepage) {
+    return null;
+  }
+
+  const components = preloadedComponents ?? createOnDemandComponentList(isPublished, tenantId);
+
+  // Get layers for homepage (depends on homepage.id)
+  const [{ data: pageLayers, error: layersError }] = await Promise.all([
+    fetchPageLayersWithComponents(supabase, homepage.id, isPublished, components),
+    ensurePageTranslations(translations, homepage.id),
+  ]);
+
+  if (layersError) {
+    if (layersError.code !== NO_ROWS_ERROR_CODE) {
+      throw new Error(`Failed to fetch homepage layers: ${layersError.message}`);
+    }
+    return null;
+  }
+
+  // Translate component-instance override values before resolving components
+  // so per-instance translations are applied through the override pipeline.
+  const localized = translateInstanceOverrides(
+    pageLayers?.layers || [],
+    homepage.id,
+    components,
+    translations,
+    { includeIncomplete: !isPublished }
+  );
+
+  const layersWithComponents = resolveComponents(localized.layers, localized.components);
+
+  // Resolve collection layers server-side (for both draft and published)
+  let resolvedLayers = layersWithComponents.length > 0
+    ? await resolveCollectionLayers(layersWithComponents, isPublished, undefined, paginationContext, translations)
+    : [];
+
+  // Resolve collections inside rich text embedded components
+  resolvedLayers = await resolveRichTextCollections(resolvedLayers, components, isPublished, translations);
+
+  // Resolve all AssetVariables to URLs server-side (prevents client-side API calls)
+  const resolved = await resolveAllAssets(resolvedLayers, isPublished, components);
+  resolvedLayers = resolved.layers;
+
+  return {
+    page: homepage,
+    pageLayers: {
+      ...pageLayers,
+      layers: resolvedLayers,
+    },
+    components,
+    locale: null,
+    availableLocales: availableLocales as Locale[] || [],
+    translations: translations || {},
+    generatedCss: pageLayers?.generated_css || null,
+  };
 });
 
 /** Page columns needed to match a URL; the matched page's full row is loaded separately */
