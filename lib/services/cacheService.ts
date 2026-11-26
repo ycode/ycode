@@ -1,6 +1,8 @@
 import { revalidateTag, revalidatePath } from 'next/cache';
 import { invalidateByTag } from '@vercel/functions';
 import { buildRedirectsTag, GLOBAL_SETTINGS_TAG } from '@/lib/cache-tags';
+import { isCurrentWarmRun, orderRoutesForWarming } from '@/lib/cache-warm-utils';
+import { getSettingByKey, setSetting } from '@/lib/repositories/settingsRepository';
 import { getSupabaseAdmin, getSupabaseConfig } from '@/lib/supabase-server';
 import { buildSlugPath, normalizeSlugSegment } from '@/lib/page-utils';
 import type { Page, PageFolder } from '@/types';
@@ -30,6 +32,13 @@ const MAX_ROUTES_TO_WARM_TOTAL = (() => {
   const raw = Number(process.env.CACHE_WARM_MAX_TOTAL);
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 2000;
 })();
+
+/**
+ * Setting holding the id of the site's newest warm run. Every save or publish
+ * starts a run; chain hops of older runs stop when they see a newer id, so
+ * rapid saves don't stack overlapping chains that re-render the same pages.
+ */
+const WARM_RUN_SETTING_KEY = 'cache_warm_run';
 
 type SupabaseAdmin = NonNullable<Awaited<ReturnType<typeof getSupabaseAdmin>>>;
 
@@ -200,7 +209,10 @@ export async function getRoutePathsForPages(pageIds: string[]): Promise<string[]
 
   if (!pages || !folders) return [];
 
+  // Default-locale paths come before locale variants so warming (which stops
+  // at CACHE_WARM_MAX_TOTAL) reaches every page before its translations.
   const routePaths: string[] = [];
+  const localeRoutePaths: string[] = [];
   const dynamicPages: Page[] = [];
 
   // Build translations lookup
@@ -254,17 +266,19 @@ export async function getRoutePathsForPages(pageIds: string[]): Promise<string[]
         }
 
         const localePath = slugParts.map(normalizeSlugSegment).filter(Boolean).join('/');
-        if (localePath) routePaths.push(localePath);
+        if (localePath) localeRoutePaths.push(localePath);
       }
     }
   }
+
+  routePaths.push(...localeRoutePaths);
 
   // Resolve actual URLs for dynamic pages by enumerating collection item slugs
   if (dynamicPages.length > 0) {
     const dynamicRoutes = await resolveDynamicPageRoutes(
       client, dynamicPages, folders as PageFolder[], locales || [], translationsMap,
     );
-    routePaths.push(...dynamicRoutes);
+    routePaths.push(...dynamicRoutes.defaultRoutes, ...dynamicRoutes.localeRoutes);
   }
 
   return [...new Set(routePaths)];
@@ -281,8 +295,9 @@ async function resolveDynamicPageRoutes(
   folders: PageFolder[],
   locales: Array<{ id: string; code: string; is_default: boolean }>,
   translationsMap: Record<string, Record<string, string>>,
-): Promise<string[]> {
+): Promise<{ defaultRoutes: string[]; localeRoutes: string[] }> {
   const routes: string[] = [];
+  const localeRoutes: string[] = [];
 
   for (const page of dynamicPages) {
     const collectionId = (page.settings as any)?.cms?.collection_id;
@@ -352,12 +367,12 @@ async function resolveDynamicPageRoutes(
         slugParts.push(lt[`cms:${sv.item_id}:field:key:slug`] || itemSlug);
 
         const localePath = slugParts.map(normalizeSlugSegment).filter(Boolean).join('/');
-        if (localePath) routes.push(localePath);
+        if (localePath) localeRoutes.push(localePath);
       }
     }
   }
 
-  return routes;
+  return { defaultRoutes: routes, localeRoutes };
 }
 
 /**
@@ -662,6 +677,30 @@ function sanitiseWarmRoutes(routes: unknown): string[] {
   );
 }
 
+/**
+ * Record a new warm run as the site's newest. Returns null when it can't be
+ * stored, in which case the chain runs without the check.
+ */
+async function startWarmRun(): Promise<string | null> {
+  const runId = crypto.randomUUID();
+  try {
+    await setSetting(WARM_RUN_SETTING_KEY, runId);
+    return runId;
+  } catch (error) {
+    console.error('❌ [Cache] Failed to record warm run:', error);
+    return null;
+  }
+}
+
+/** Whether `runId` is still the site's newest warm run. Fails open on read errors. */
+async function isWarmRunStillCurrent(runId: string): Promise<boolean> {
+  try {
+    return isCurrentWarmRun(runId, await getSettingByKey(WARM_RUN_SETTING_KEY));
+  } catch {
+    return true;
+  }
+}
+
 /** Fetch a batch of routes in parallel, swallowing per-route failures. */
 async function warmBatch(routes: string[], baseUrl: string): Promise<void> {
   await Promise.allSettled(
@@ -745,12 +784,13 @@ async function scheduleWarmChain(
   baseUrl: string,
   routes: string[],
   alreadyWarmed: number,
+  runId: string | null,
 ): Promise<void> {
   if (routes.length === 0) return;
   const key = await getChainSigningKey();
   if (!key) return;
 
-  const body = JSON.stringify({ routes, warmed: alreadyWarmed });
+  const body = JSON.stringify({ routes, warmed: alreadyWarmed, runId });
   const signature = await hmacHex(body, key);
   await fetch(`${baseUrl}/ycode/api/cache/warm`, {
     method: 'POST',
@@ -770,6 +810,8 @@ async function scheduleWarmChain(
  *
  * @param alreadyWarmed routes warmed by earlier links in this chain, used to
  *   enforce the cumulative overall cap.
+ * @param runId the run this chain belongs to. Chained links stop once a newer
+ *   run for the site has started.
  * @returns how many routes this link scheduled, and how many remain queued for
  *   the next link.
  */
@@ -777,7 +819,8 @@ export async function warmRouteChain(
   routes: string[],
   alreadyWarmed: number,
   request: Request,
-): Promise<{ scheduled: number; remaining: number }> {
+  runId: string | null = null,
+): Promise<{ scheduled: number; remaining: number; superseded?: boolean }> {
   if (process.env.VERCEL !== '1') return { scheduled: 0, remaining: 0 };
 
   const safeRoutes = sanitiseWarmRoutes(routes);
@@ -785,6 +828,10 @@ export async function warmRouteChain(
 
   const baseUrl = resolveBaseUrl(request);
   if (!baseUrl) return { scheduled: 0, remaining: 0 };
+
+  if (alreadyWarmed > 0 && runId && !(await isWarmRunStillCurrent(runId))) {
+    return { scheduled: 0, remaining: 0, superseded: true };
+  }
 
   // Enforce the overall cap using the cumulative counter carried through the
   // chain, so a long route list can't exceed the budget across invocations.
@@ -801,7 +848,7 @@ export async function warmRouteChain(
       (async () => {
         await warmBatch(batch, baseUrl);
         if (remaining.length > 0) {
-          await scheduleWarmChain(baseUrl, remaining, alreadyWarmed + batch.length);
+          await scheduleWarmChain(baseUrl, remaining, alreadyWarmed + batch.length, runId);
         }
       })(),
     );
@@ -821,6 +868,10 @@ export async function warmRouteChain(
  * whole list up to MAX_ROUTES_TO_WARM_TOTAL — anything beyond that self-warms
  * on first real visit.
  *
+ * Routes are warmed homepage first, then by path depth, so the cap keeps the
+ * most visited pages. A list longer than one batch starts a new run for the
+ * site, which stops any older chain still draining.
+ *
  * Vercel-only: warming via internal fetch only makes sense when there's a
  * CDN in front of the function. No-ops elsewhere.
  *
@@ -835,7 +886,9 @@ export async function warmRoutes(
   if (process.env.VERCEL !== '1' || routes.length === 0) return null;
 
   const total = routes.length;
-  const result = await warmRouteChain(routes, 0, request);
+  const orderedRoutes = orderRoutesForWarming(routes);
+  const runId = orderedRoutes.length > WARM_BATCH_SIZE ? await startWarmRun() : null;
+  const result = await warmRouteChain(orderedRoutes, 0, request, runId);
   if (result.scheduled === 0 && result.remaining === 0) return null;
 
   // scheduled = this batch; remaining = what the chain will drain next. The
