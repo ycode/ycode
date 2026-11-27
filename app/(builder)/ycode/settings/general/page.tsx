@@ -28,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useAssetsStore } from '@/stores/useAssetsStore';
 import type { SitemapSettings, SitemapMode, SitemapChangeFrequency, Asset } from '@/types';
+import { ARD_JSON_SETTING_KEY, getArdManifestError, serializeArdManifest } from '@/lib/ard-manifest';
 import { normalizeSitemapSettings } from '@/lib/sitemap-settings';
 import { getTimezoneOptions } from '@/lib/setting-utils';
 import { getDetectedTimezone, isCloudVersion } from '@/lib/utils';
@@ -61,6 +62,7 @@ export default function GeneralSettingsPage() {
   const storedLlmsTxt = getSettingByKey('llms_txt') as string | null;
   const [robotsTxt, setRobotsTxt] = useState(storedRobotsTxt || '');
   const [llmsTxt, setLlmsTxt] = useState(storedLlmsTxt || '');
+  const [ardJson, setArdJson] = useState(() => serializeArdManifest(getSettingByKey(ARD_JSON_SETTING_KEY)) || '');
 
   // Initialize Google Analytics, Site Verification, and Canonical URL from store
   const storedGaMeasurementId = getSettingByKey('ga_measurement_id') as string | null;
@@ -170,17 +172,24 @@ export default function GeneralSettingsPage() {
 
   // Save SEO settings
   const saveSeoSettings = useCallback(async () => {
+    const ardJsonError = getArdManifestError(ardJson);
+    if (ardJsonError) {
+      toast.error(ardJsonError);
+      return;
+    }
+
     setIsSaving(true);
     await saveSettings({
       sitemap: sitemapSettings,
       robots_txt: robotsTxt,
       llms_txt: llmsTxt,
+      [ARD_JSON_SETTING_KEY]: ardJson,
       ga_measurement_id: gaMeasurementId,
       google_site_verification: googleSiteVerification,
       global_canonical_url: globalCanonicalUrl,
     });
     setIsSaving(false);
-  }, [saveSettings, sitemapSettings, robotsTxt, llmsTxt, gaMeasurementId, googleSiteVerification, globalCanonicalUrl]);
+  }, [saveSettings, sitemapSettings, robotsTxt, llmsTxt, ardJson, gaMeasurementId, googleSiteVerification, globalCanonicalUrl]);
 
   // Save custom code settings
   const saveCustomCodeSettings = useCallback(async () => {
@@ -629,6 +638,22 @@ export default function GeneralSettingsPage() {
                     id="llms"
                     value={llmsTxt}
                     onChange={(e) => setLlmsTxt(e.target.value)}
+                  />
+                </Field>
+
+                <Field className="col-span-2">
+                  <FieldLabel htmlFor="ard-json">
+                    Contents of &ldquo;ard.json&rdquo;
+                  </FieldLabel>
+                  <FieldDescription>
+                    If populated, this Agentic Resource Discovery manifest will be served at /.well-known/ard.json so AI agents can find your APIs and MCP servers. Learn more at agenticresourcediscovery.org.
+                  </FieldDescription>
+                  <Textarea
+                    id="ard-json"
+                    value={ardJson}
+                    onChange={(e) => setArdJson(e.target.value)}
+                    placeholder={'{\n  "entries": []\n}'}
+                    className="font-mono text-sm"
                   />
                 </Field>
 

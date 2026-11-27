@@ -33,6 +33,7 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
+    "app/(site)/.well-known/ard.json/route.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
